@@ -230,6 +230,7 @@
   </div>
 
   <div class="rail" id="rail"></div>
+  <div class="rail" id="acctbar" style="padding-top:0"></div>
 
   <nav class="tabs" id="tabs">
     <button class="tab on" data-t="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</button>
@@ -254,6 +255,15 @@
       <small>Chequing and credit card exports · any months · duplicates are ignored</small>
     </div>
     <input type="file" id="file" accept=".csv,text/csv" multiple>
+    <div class="feedrow" style="align-items:center;margin-bottom:2px">
+      <span style="font-size:11.5px;color:var(--muted)">These files are:</span>
+      <select id="impAcct" style="flex:1;font:inherit;font-size:12px;padding:7px 9px;border:1px solid var(--line2);border-radius:9px;background:var(--paper);color:var(--ink)">
+        <option value="auto">Auto-detect (best guess)</option>
+        <option value="chequing">Chequing</option>
+        <option value="credit">Credit card</option>
+      </select>
+    </div>
+    <div class="fstat" id="impStat"></div>
     <div class="dsec">
       <div class="t">Auto-sync from Gmail</div>
       <div class="feedrow">
@@ -418,7 +428,7 @@ function merchantToken(desc){
   const words=u.split(/\s+/).filter(w=>w.length>1 && !/\d/.test(w));      // drop numbers/store IDs
   return words.slice(0,2).join(' ').trim() || upper(desc).trim().slice(0,18);
 }
-let TAB='home', MONTH='all', SUB='cats', FILTER='', TXVIEW=[], drillOpen={};
+let TAB='home', MONTH='all', SUB='cats', FILTER='', TXVIEW=[], drillOpen={}, ACCT='all';
 const txKey=t=>`${t.date}|${upper(t.desc).slice(0,40)}|${t.amt}|${t.dir}`;
 const saveTX=()=>store.set(KEY_TX,JSON.stringify(TX));
 const saveBills=()=>store.set(KEY_BILLS,JSON.stringify(BILLS));
@@ -432,9 +442,26 @@ function userRuleCat(desc){
   return null;
 }
 function catOf(t){ return OVR[txKey(t)] || userRuleCat(t.desc) || categorize(t.desc).c; }
-function addTxs(list){
-  const have=new Set(TX.map(txKey)); let added=0;
-  for(const t of list){ const k=txKey(t); if(!have.has(k)){ TX.push(t); have.add(k); added++; } }
+const acctOf=t=>t.acct||'unknown';
+// Best-effort guess of which CIBC account a parsed file is, from its own rows. Unreliable — the picker overrides.
+function guessAcct(list){
+  let inc=0,out=0,cardpay=0;
+  for(const t of list){ if(t.dir==='in') inc++; else out++;
+    const u=upper(t.desc); if(u.includes('PAYMENT THANK YOU')||u.includes('PAIEMENT MERCI')) cardpay++; }
+  if(cardpay>0) return 'credit';                 // card-payment confirmations only appear on the credit card
+  if(inc>0 && inc>=out*0.15) return 'chequing';  // meaningful deposits ⇒ chequing (payroll, e-transfers)
+  return 'credit';                                // otherwise assume card (mostly outgoing purchases)
+}
+// Returns the array of newly-added rows (callers use .length). Optional acct tags new rows and
+// upgrades the account of any existing untagged duplicate.
+function addTxs(list, acct){
+  const have=new Set(TX.map(txKey));
+  const byKey = acct ? new Map(TX.map(t=>[txKey(t),t])) : null;
+  const added=[];
+  for(const t of list){ const k=txKey(t);
+    if(!have.has(k)){ const row=acct?{...t,acct}:t; TX.push(row); have.add(k); added.push(row); }
+    else if(byKey){ const ex=byKey.get(k); if(ex && acctOf(ex)==='unknown') ex.acct=acct; }
+  }
   saveTX(); return added;
 }
 
@@ -445,8 +472,10 @@ const fmtDate=d=>{const x=new Date(d+'T00:00');return x.toLocaleDateString('en-C
 const monthName=m=>{const x=new Date(m+'-15T00:00');return x.toLocaleDateString('en-CA',{month:'long',year:'numeric'});};
 const dow=d=>new Date(d+'T00:00').getDay();
 const inMonth=t=>MONTH==='all'||t.date.slice(0,7)===MONTH;
-function spendAll(){ return TX.filter(t=>t.dir==='out' && !special(t.desc)); }
-function incomeAll(){ return TX.filter(t=>t.dir==='in' && !special(t.desc)); }
+function acctMatch(t){ return ACCT==='all' || acctOf(t)===ACCT; }
+function acctsPresent(){ return [...new Set(TX.map(acctOf))]; }
+function spendAll(){ return TX.filter(t=>t.dir==='out' && !special(t.desc) && acctMatch(t)); }
+function incomeAll(){ return TX.filter(t=>t.dir==='in' && !special(t.desc) && acctMatch(t)); }
 function spendF(){ return spendAll().filter(inMonth); }
 function incomeF(){ return incomeAll().filter(inMonth); }
 function monthsAvailable(){ return [...new Set(TX.map(t=>t.date.slice(0,7)))].sort().reverse(); }
@@ -889,8 +918,17 @@ function renderRail(){
   rail.innerHTML=chips.join('');
   rail.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{MONTH=c.dataset.m;render();});
 }
+function renderAcctBar(){
+  const bar=document.getElementById('acctbar'); if(!bar) return;
+  const present=acctsPresent().filter(a=>a!=='unknown');
+  if(present.length<2){ bar.innerHTML=''; if(ACCT!=='all') ACCT='all'; return; }  // only show when there's a real split
+  const opts=[['all','ALL'],['chequing','CHEQUING'],['credit','CREDIT']];
+  bar.innerHTML=opts.map(([v,l])=>`<button class="chip ${ACCT===v?'on':''}" data-acct="${v}">${l}</button>`).join('');
+  bar.querySelectorAll('[data-acct]').forEach(c=>c.onclick=()=>{ACCT=c.dataset.acct;render();});
+}
 function render(){
   renderRail();
+  renderAcctBar();
   if(!TX.length && TAB!=='recurring' && TAB!=='income'){ view.innerHTML=vEmpty(); wire(); return; }
   view.innerHTML = TAB==='home'?vHome():TAB==='where'?vWhere():TAB==='income'?vIncome():TAB==='goingout'?vGoingOut():TAB==='recurring'?vRecurring():TAB==='trips'?vTrips():vHeads();
   wire();
@@ -934,7 +972,7 @@ function wire(){
   };
   view.querySelectorAll('[data-deltrip]').forEach(el=>el.onclick=()=>{TRIPS.splice(+el.dataset.deltrip,1);saveTrips();render();});
   const ei=document.getElementById('emptyImport'); if(ei) ei.onclick=openDlg;
-  const es=document.getElementById('emptySample'); if(es) es.onclick=()=>{const n=addTxs(SAMPLE);render();toast(`Loaded ${n} sample transactions`);};
+  const es=document.getElementById('emptySample'); if(es) es.onclick=()=>{const n=addTxs(SAMPLE).length;render();toast(`Loaded ${n} sample transactions`);};
 }
 function setTab(){ document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.t===TAB)); }
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.t;setTab();render();window.scrollTo({top:0});});
@@ -949,7 +987,7 @@ function openDlg(){ dlg.showModal(); }
 document.getElementById('openImport').onclick=openDlg;
 document.getElementById('closeDlg').onclick=()=>dlg.close();
 dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.close(); });
-document.getElementById('sampleBtn').onclick=()=>{ const n=addTxs(SAMPLE); dlg.close(); render(); toast(`Loaded ${n} sample transactions`); };
+document.getElementById('sampleBtn').onclick=()=>{ const n=addTxs(SAMPLE).length; dlg.close(); render(); toast(`Loaded ${n} sample transactions`); };
 document.getElementById('resetBtn').onclick=()=>{ if(confirm('Wipe all transactions, budgets and trips? Bills stay.')){ TX=[];TRIPS=[];BUDGETS={};saveTX();saveTrips();saveBud();drillOpen={};MONTH='all';dlg.close();render();toast('All data cleared'); } };
 
 /* file drop */
@@ -960,10 +998,32 @@ drop.onclick=()=>fileInput.click();
 drop.addEventListener('drop',ev=>handleFiles(ev.dataTransfer.files));
 fileInput.addEventListener('change',ev=>handleFiles(ev.target.files));
 function handleFiles(files){
-  let pending=files.length, total=0, skipped=0;
-  if(!pending) return;
-  [...files].forEach(f=>{ const r=new FileReader(); r.onload=()=>{ const {txs,skipped:sk}=parseCSV(r.result); total+=addTxs(txs); skipped+=sk;
-    if(--pending===0){ drillOpen={}; MONTH='all'; dlg.close(); render(); toast(total?`Imported ${total} new transactions`:'Nothing new — already imported'); } }; r.readAsText(f); });
+  let pending=files.length; if(!pending) return;
+  const pick=document.getElementById('impAcct'); const choice=pick?pick.value:'auto';
+  const addedAll=[]; let skipped=0;
+  [...files].forEach(f=>{ const r=new FileReader(); r.onload=()=>{
+    const {txs,skipped:sk}=parseCSV(r.result); skipped+=sk;
+    const acct = choice==='auto' ? guessAcct(txs) : choice;   // per-file guess when auto
+    addedAll.push(...addTxs(txs, acct));
+    if(--pending===0) finishImport(addedAll, skipped);
+  }; r.readAsText(f); });
+}
+// Show a real gap report instead of a vague count — what the CSVs had that the feed didn't.
+function finishImport(added, skipped){
+  drillOpen={}; MONTH='all'; ACCT='all'; render();   // refresh views behind the still-open dialog
+  const stat=document.getElementById('impStat');
+  if(!added.length){
+    if(stat) stat.innerHTML=`<b>Nothing new.</b> Every row was already imported${skipped?` (${skipped} non-transaction rows ignored)`:''}.`;
+    toast('Nothing new — already imported'); return;
+  }
+  const by=a=>added.filter(t=>acctOf(t)===a).length;
+  const chq=by('chequing'), cr=by('credit'), unk=by('unknown');
+  const income=added.filter(t=>t.dir==='in' && !special(t.desc)).length;
+  const ds=added.map(t=>t.date).sort();
+  const span=ds.length?`${fmtDate(ds[0])} – ${fmtDate(ds[ds.length-1])}`:'';
+  const parts=[]; if(chq)parts.push(`${chq} chequing`); if(cr)parts.push(`${cr} credit`); if(unk)parts.push(`${unk} untagged`);
+  if(stat) stat.innerHTML=`<b>Added ${added.length} new</b> — ${parts.join(' · ')}${income?` · incl. ${income} money-in`:''}<br><span style="color:var(--faint)">${span} · this is what the Gmail feed didn't have. Duplicates were ignored.</span>`;
+  toast(`Imported ${added.length} new`);
 }
 
 /* gmail feed */
@@ -978,7 +1038,7 @@ async function syncFeed(auto){
     const r=await fetch(url); const j=await r.json();
     if(j.error){ feedStat.textContent='Feed error: '+j.error; return; }
     const list=(j.txs||[]).filter(t=>t.date&&t.amt>0).map(t=>({date:t.date,desc:String(t.desc||'(alert)'),amt:+t.amt,dir:t.dir==='in'?'in':'out'}));
-    const added=addTxs(list);
+    const added=addTxs(list,'credit').length;   // the Gmail feed only sees credit-card alert emails
     feedStat.textContent=added?`Added ${added} new from Gmail.`:'Up to date.';
     if(added){ render(); toast(`+${added} from Gmail`); }
   }catch(e){ feedStat.textContent='Couldn\u2019t reach the feed — check the URL.'; }
