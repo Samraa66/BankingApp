@@ -269,7 +269,7 @@ const store={
   get(k){ try{ const v=localStorage.getItem(k); return v==null?null:v; }catch(e){ return mem[k]??null; } },
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
 };
-const KEY_TX='mm_tx_v1', KEY_BILLS='mm_bills_v1', KEY_BUD='mm_budgets_v1', KEY_SET='mm_settings_v1', KEY_TRIPS='mm_trips_v1', KEY_CATOV='mm_catov_v1';
+const KEY_TX='mm_tx_v1', KEY_BILLS='mm_bills_v1', KEY_BUD='mm_budgets_v1', KEY_SET='mm_settings_v1', KEY_TRIPS='mm_trips_v1', KEY_CATOV='mm_catov_v1', KEY_RULES='mm_rules_v1';
 
 /* ================= categorization ================= */
 const NYC=['MAMAN','PICCOLA','LE BAIN','KNOCKDOWN','7TH STREET','BEST FLAVOR','DOS TOROS','FOGON','E SMOKE','SPEED FIX','PHIL CAFE','CITY ISLAND','CARMELA','MTA*NYCT','NYC'];
@@ -388,6 +388,17 @@ let SETTINGS = JSON.parse(store.get(KEY_SET)|| JSON.stringify({income:3890, savi
 if(!('feed' in SETTINGS)) SETTINGS.feed='';
 let TRIPS = JSON.parse(store.get(KEY_TRIPS)||'[]');
 let OVR = JSON.parse(store.get(KEY_CATOV)||'{}');
+let RULESU = JSON.parse(store.get(KEY_RULES)||'{}');   // { TOKEN(uppercase): category }
+const saveRules=()=>store.set(KEY_RULES,JSON.stringify(RULESU));
+// Suggest a stable, human-readable token for a raw description so a rule can match all
+// charges from the same merchant. Strips processor prefixes, store numbers, and geography noise.
+function merchantToken(desc){
+  let u=upper(desc).replace(/[*#]/g,' ');
+  u=u.replace(/\b(SQ|TST|TST-|POS|IC|SP|PAYPAL|PP|Q|AMZN|MKTP)\b/g,' '); // processor/prefix noise
+  u=u.replace(/\b[A-Z]{2}\b$/,' ');                                       // trailing province code
+  const words=u.split(/\s+/).filter(w=>w.length>1 && !/\d/.test(w));      // drop numbers/store IDs
+  return words.slice(0,2).join(' ').trim() || upper(desc).trim().slice(0,18);
+}
 let TAB='home', MONTH='all', SUB='cats', FILTER='', TXVIEW=[], drillOpen={};
 const txKey=t=>`${t.date}|${upper(t.desc).slice(0,40)}|${t.amt}|${t.dir}`;
 const saveTX=()=>store.set(KEY_TX,JSON.stringify(TX));
@@ -396,7 +407,12 @@ const saveBud=()=>store.set(KEY_BUD,JSON.stringify(BUDGETS));
 const saveSet=()=>store.set(KEY_SET,JSON.stringify(SETTINGS));
 const saveTrips=()=>store.set(KEY_TRIPS,JSON.stringify(TRIPS));
 const saveOvr=()=>store.set(KEY_CATOV,JSON.stringify(OVR));
-function catOf(t){ return OVR[txKey(t)]||categorize(t.desc).c; }
+function userRuleCat(desc){
+  const u=upper(desc);
+  for(const [tok,cat] of Object.entries(RULESU)){ if(tok && u.includes(tok)) return cat; }
+  return null;
+}
+function catOf(t){ return OVR[txKey(t)] || userRuleCat(t.desc) || categorize(t.desc).c; }
 function addTxs(list){
   const have=new Set(TX.map(txKey)); let added=0;
   for(const t of list){ const k=txKey(t); if(!have.has(k)){ TX.push(t); have.add(k); added++; } }
