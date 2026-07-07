@@ -234,10 +234,10 @@
   <nav class="tabs" id="tabs">
     <button class="tab on" data-t="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</button>
     <button class="tab" data-t="where"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V9M10 20V4M16 20v-8M22 20H2"/></svg>Spending</button>
+    <button class="tab" data-t="income"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>Income</button>
     <button class="tab" data-t="goingout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-8 9z"/><path d="M12 13v7M8 21h8"/></svg>Going out</button>
     <button class="tab" data-t="recurring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>Recurring</button>
     <button class="tab" data-t="trips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16l20-6-6 12-3-5z"/><path d="M22 10L9 13"/></svg>Trips</button>
-    <button class="tab" data-t="heads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/></svg>Alerts</button>
   </nav>
 
   <main id="view"></main>
@@ -341,6 +341,13 @@ function special(desc){
   if(u.includes('TO CARD')||u.includes('INTERNET TRANSFER')) return 'transfer';
   if(u.includes('E-TRANSFER')) return 'transfer';
   return null;
+}
+function incomeSource(desc){
+  const u=upper(desc);
+  if(u.includes('FLEX DEPOT')||u.includes('PAYROLL')||u.startsWith('PAY ')) return 'Payroll';
+  if(u.includes('SOLIDARITY')||u.includes('SOLIDARITE')||u.includes('CREDIT')||u.includes('CANADA')||u.includes('GST')||u.includes('GOUV')) return 'Government credit';
+  if(u.includes('E-TRANSFER')||u.includes('VIREMENT')||u.includes('DEPOSIT')) return 'E-transfer in';
+  return 'Other';
 }
 
 /* ================= CSV parsing ================= */
@@ -501,7 +508,7 @@ function chartBars(series, opts){
     const bh=(H-pad*2)*(s.spend/max);
     const incY=s.income?y(s.income):null;
     return `<g class="bar" data-m="${s.key}" role="button" tabindex="0"
-        aria-label="${s.label}: spent ${CAD(s.spend)}${s.income?', in '+CAD(s.income):''}">
+        aria-label="${s.label}: ${opts.metric||'spent'} ${CAD(s.spend)}${s.income?', in '+CAD(s.income):''}">
       <rect class="b" x="${x}" y="${(H-pad-bh).toFixed(1)}" width="${bw}" height="${Math.max(bh,1).toFixed(1)}" rx="4"
         fill="${sel?'var(--ink)':'var(--faint)'}"></rect>
       ${incY!=null?`<line class="inc" x1="${x-2}" y1="${incY.toFixed(1)}" x2="${x+bw+2}" y2="${incY.toFixed(1)}"></line>`:''}
@@ -509,7 +516,7 @@ function chartBars(series, opts){
     </g>`;
   }).join('');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"
-      role="img" aria-label="Monthly spending${series.some(s=>s.income)?' with income shown as green marks':''} by month">
+      role="img" aria-label="Monthly ${opts.metricPlural||'spending'}${series.some(s=>s.income)?' with income shown as green marks':''} by month">
     ${bars}</svg>`;
 }
 
@@ -546,6 +553,42 @@ function vHome(){
     <div class="chead"><h2>Monthly plan</h2><span class="cap">saved automatically</span></div>
     <div class="plan-row"><span class="pl">Take-home income / month</span><input class="pin mono" id="setIncome" value="${SETTINGS.income}" inputmode="decimal"></div>
     <div class="plan-row"><span class="pl">Savings goal / month</span><input class="pin mono" id="setSavings" value="${SETTINGS.savings}" inputmode="decimal"></div>
+  </div>`;
+}
+function vIncome(){
+  const inc=incomeAll();                                   // all income, transfers already excluded
+  const ms=monthsAvailable().slice().reverse();
+  const byMonth={};
+  for(const t of inc){ const mo=t.date.slice(0,7); byMonth[mo]=(byMonth[mo]||0)+t.amt; }
+  const series=ms.map(m=>({key:m,label:new Date(m+'-15T00:00').toLocaleDateString('en-CA',{month:'short'}),
+    spend:byMonth[m]||0, income:0}));                       // bars encode income here
+  const totalIn=incomeF().reduce((s,t)=>s+t.amt,0);
+  const grandIn=Object.values(byMonth).reduce((a,b)=>a+b,0);
+  const avg=ms.length?grandIn/ms.length:0;
+  const bySrc={};
+  for(const t of incomeF()){ const s=incomeSource(t.desc); bySrc[s]=bySrc[s]||{total:0,n:0}; bySrc[s].total+=t.amt; bySrc[s].n++; }
+  const srcRows=Object.entries(bySrc).sort((a,b)=>b[1].total-a[1].total)
+    .map(([s,v])=>`<div class="brow"><span class="bn">${s} <span class="bc">${v.n}×</span></span><span class="ba mono">${CAD(v.total)}</span></div>`).join('')
+    || '<div class="empty">No income in this period.</div>';
+  return `
+  <div class="receipt">
+    <div class="eyebrow">Money in · ${scopeLabel()}</div>
+    <div class="line"><span>${MONTH==='all'?'Average / month':'This month'}</span><b class="mono">${CAD(MONTH==='all'?avg:totalIn)}</b></div>
+    <hr class="tear">
+    <div class="total"><span class="lbl">${MONTH==='all'?'total in, all months':monthName(MONTH)}</span>
+      <span class="big mono pos">${CAD(MONTH==='all'?grandIn:totalIn)}</span></div>
+  </div>
+  <div class="card">
+    <div class="chead"><h2>What comes in, by month</h2><span class="cap">tap a bar · green = money in</span></div>
+    ${chartBars(series,{selected:MONTH!=='all'?MONTH:null,metric:'received',metricPlural:'income'})}
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Where it comes from</h2><span class="cap">${scopeLabel()}</span></div>
+    ${srcRows}
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Heads up</h2></div>
+    <div class="flag"><div class="ft">Is anything missing?</div><div class="fb">If you earn from sources that don't hit your CIBC chequing (e.g. <b>Mercor</b>), they won't show here. This view only sees deposits in your imported data.</div></div>
   </div>`;
 }
 function vWhere(){
@@ -794,11 +837,15 @@ function renderRail(){
 }
 function render(){
   renderRail();
-  if(!TX.length && TAB!=='recurring'){ view.innerHTML=vEmpty(); wire(); return; }
-  view.innerHTML = TAB==='home'?vHome():TAB==='where'?vWhere():TAB==='goingout'?vGoingOut():TAB==='recurring'?vRecurring():TAB==='trips'?vTrips():vHeads();
+  if(!TX.length && TAB!=='recurring' && TAB!=='income'){ view.innerHTML=vEmpty(); wire(); return; }
+  view.innerHTML = TAB==='home'?vHome():TAB==='where'?vWhere():TAB==='income'?vIncome():TAB==='goingout'?vGoingOut():TAB==='recurring'?vRecurring():TAB==='trips'?vTrips():vHeads();
   wire();
 }
 function wire(){
+  view.querySelectorAll('.chart .bar[data-m]').forEach(b=>{
+    const go=()=>{MONTH=b.dataset.m;render();};
+    b.onclick=go; b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};
+  });
   view.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{SUB=b.dataset.sub;render();});
   const ec=document.getElementById('expcsv'); if(ec) ec.onclick=exportSheet;
   const tf=document.getElementById('txfilter'); if(tf) tf.addEventListener('input',e=>{
