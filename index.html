@@ -143,6 +143,18 @@
   .stat .v{font-size:17px;font-weight:650;margin-top:3px}
   .stat .v.neg{color:var(--red)} .stat .v.pos{color:var(--money)}
 
+  /* monthly bar chart */
+  .chart{width:100%;height:auto;margin:6px 0 2px;display:block}
+  .chart .bar{cursor:pointer}
+  .chart .bar rect.b{transition:opacity .2s}
+  .chart .bar:hover rect.b{opacity:.82}
+  .chart .bar:focus-visible{outline:none}
+  .chart .bar:focus-visible rect.b{stroke:var(--ink);stroke-width:2}
+  .chart .lbl{font-family:var(--mono);font-size:9px;fill:var(--faint)}
+  .chart .lbl.on{fill:var(--ink);font-weight:700}
+  .chart .inc{stroke:var(--money);stroke-width:2;stroke-linecap:round}
+  @media (prefers-reduced-motion:reduce){.chart .bar rect.b{transition:none}}
+
   /* flags */
   .flag{border-left:3px solid var(--amber);background:var(--amber-bg);border-radius:10px;padding:11px 13px;margin-bottom:9px}
   .flag.red{border-left-color:var(--red);background:var(--red-bg)}
@@ -471,6 +483,35 @@ function catRow(c,d,denom,opts){
   </div>`;
 }
 function scopeLabel(){ return MONTH==='all' ? `all ${monthsSpanAll()} months loaded` : monthName(MONTH); }
+
+// Inline SVG monthly bars. spend = bar height; income = green marker line on the same
+// dollar scale (one axis). Selected bar uses --ink (matches month-chip selection).
+// Accessible: per-bar aria-label + values, keyboard-focusable, dark-mode + reduced-motion aware.
+function chartBars(series, opts){
+  opts=opts||{};
+  if(!series.length) return '<div class="empty">No months loaded yet.</div>';
+  const n=series.length;
+  const W=Math.max(n*46,120), H=132, pad=18, bw=26;
+  const gap=n>1?(W-pad*2-bw*n)/(n-1):0;
+  const max=Math.max(1,...series.map(s=>Math.max(s.spend,s.income||0)));
+  const y=v=>pad + (H-pad*2) * (1 - v/max);
+  const bars=series.map((s,i)=>{
+    const x=pad + i*(bw+gap);
+    const sel=opts.selected===s.key;
+    const bh=(H-pad*2)*(s.spend/max);
+    const incY=s.income?y(s.income):null;
+    return `<g class="bar" data-m="${s.key}" role="button" tabindex="0"
+        aria-label="${s.label}: spent ${CAD(s.spend)}${s.income?', in '+CAD(s.income):''}">
+      <rect class="b" x="${x}" y="${(H-pad-bh).toFixed(1)}" width="${bw}" height="${Math.max(bh,1).toFixed(1)}" rx="4"
+        fill="${sel?'var(--ink)':'var(--faint)'}"></rect>
+      ${incY!=null?`<line class="inc" x1="${x-2}" y1="${incY.toFixed(1)}" x2="${x+bw+2}" y2="${incY.toFixed(1)}"></line>`:''}
+      <text class="lbl ${sel?'on':''}" x="${x+bw/2}" y="${H-5}" text-anchor="middle">${s.label}</text>
+    </g>`;
+  }).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"
+      role="img" aria-label="Monthly spending${series.some(s=>s.income)?' with income shown as green marks':''} by month">
+    ${bars}</svg>`;
+}
 
 function vHome(){
   const out=sumOutF(), inc=sumInF(), kept=inc-out;
