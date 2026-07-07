@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Money Map</title>
+<style>
+  :root{
+    --paper:#F3F5F1; --card:#FFFFFF; --ink:#17251D; --muted:#5F6E62; --faint:#93A096;
+    --line:rgba(23,37,29,.09); --line2:rgba(23,37,29,.18);
+    --pine:#16382B; --pine-ink:#EAF3EC; --pine-dim:#9DBCA9;
+    --money:#1E9E6A; --money-bg:rgba(30,158,106,.10);
+    --red:#C94F3D; --red-bg:rgba(201,79,61,.10);
+    --amber:#C08327; --amber-bg:rgba(192,131,39,.12);
+    --plum:#7D4E79; --plum-bg:rgba(125,78,121,.10);
+    --r:16px; --r-sm:11px;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:ui-serif,Georgia,"Times New Roman",serif;
+    --shadow:0 1px 2px rgba(23,37,29,.05),0 4px 16px rgba(23,37,29,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#111614; --card:#1A211C; --ink:#E8EFE9; --muted:#9DAA9F; --faint:#6E7B71;
+      --line:rgba(232,239,233,.09); --line2:rgba(232,239,233,.18);
+      --pine:#0E241B; --pine-ink:#E4F0E6; --pine-dim:#7E9C8A;
+      --money:#3FC08C; --money-bg:rgba(63,192,140,.12);
+      --red:#E0705D; --red-bg:rgba(224,112,93,.12);
+      --amber:#D9A34C; --amber-bg:rgba(217,163,76,.13);
+      --plum:#B685B1; --plum-bg:rgba(182,133,177,.12);
+      --shadow:none;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.45;-webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .app{max-width:680px;margin:0 auto;padding:0 16px 96px}
+
+  /* top bar */
+  .top{position:sticky;top:0;z-index:20;background:var(--paper);display:flex;align-items:center;gap:10px;
+    padding:14px 2px 10px;border-bottom:1px solid var(--line)}
+  .brand{font-family:var(--serif);font-style:italic;font-weight:600;font-size:19px;letter-spacing:.01em;flex:1}
+  .brand em{font-style:italic;color:var(--money)}
+  .impbtn{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:999px;
+    border:1px solid var(--line2);background:var(--card);cursor:pointer;transition:.15s}
+  .impbtn:hover{border-color:var(--ink)}
+  .impbtn svg{width:13px;height:13px}
+
+  /* month rail */
+  .rail{display:flex;gap:6px;overflow-x:auto;padding:12px 2px;scrollbar-width:none}
+  .rail::-webkit-scrollbar{display:none}
+  .chip{flex:none;font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.06em;
+    padding:6px 12px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--muted);cursor:pointer;transition:.15s}
+  .chip:hover{color:var(--ink);border-color:var(--ink)}
+  .chip.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+
+  /* tabs — top pills on desktop, bottom bar on mobile */
+  .tabs{display:flex;gap:4px;padding:2px;margin:2px 0 16px;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border:none;background:none;
+    border-radius:9px;color:var(--faint);cursor:pointer;transition:.15s;font-size:10.5px;font-weight:600;letter-spacing:.02em}
+  .tab svg{width:17px;height:17px}
+  .tab:hover{color:var(--muted)}
+  .tab.on{background:var(--paper);color:var(--ink)}
+  @media(max-width:720px){
+    .tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;margin:0;border-radius:0;border:none;border-top:1px solid var(--line);
+      padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
+    .tab.on{background:var(--money-bg);color:var(--ink)}
+  }
+
+  /* receipt hero */
+  .receipt{background:var(--pine);color:var(--pine-ink);border-radius:var(--r);padding:20px 22px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .receipt .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;color:var(--pine-dim);font-weight:600;text-transform:uppercase}
+  .receipt .line{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;padding:7px 0;color:var(--pine-dim)}
+  .receipt .line b{color:var(--pine-ink);font-weight:600}
+  .receipt .tear{border:none;border-top:1.5px dashed rgba(234,243,236,.25);margin:6px 0 10px}
+  .receipt .total{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .receipt .total .lbl{font-size:13px;color:var(--pine-dim)}
+  .receipt .big{font-size:38px;font-weight:650;letter-spacing:-.03em}
+  .receipt .big.pos{color:#7FE0B2} .receipt .big.neg{color:#F2A08F}
+  .receipt .plan{margin-top:12px;font-size:12px;color:var(--pine-dim)}
+  .receipt .plan b{color:var(--pine-ink)}
+
+  /* cards */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .card h2{font-size:14.5px;font-weight:650;margin:0;letter-spacing:-.01em}
+  .card .cap{font-size:12px;color:var(--muted);margin:3px 0 0}
+  .chead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .link{font-size:12.5px;font-weight:600;color:var(--money);cursor:pointer;white-space:nowrap;background:none;border:none;padding:0}
+  .link:hover{text-decoration:underline}
+
+  /* category rows */
+  .cat{padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+  .cat:first-of-type{border-top:none}
+  .cat .row1{display:flex;align-items:center;gap:9px}
+  .dot{width:8px;height:8px;border-radius:3px;flex:none}
+  .cat .nm{font-size:13.5px;font-weight:550;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cat .amt{font-size:13.5px;font-weight:650}
+  .cat .chev{width:14px;height:14px;color:var(--faint);transition:transform .18s;flex:none}
+  .cat.open .chev{transform:rotate(90deg)}
+  .track{height:6px;border-radius:5px;background:var(--line);margin-top:8px;overflow:hidden}
+  .fill{height:100%;border-radius:5px;transition:width .5s cubic-bezier(.2,.7,.2,1)}
+  .drill{display:none;margin-top:9px;padding:2px 0 2px 17px}
+  .cat.open .drill{display:block}
+  .m{display:flex;align-items:baseline;gap:8px;padding:4px 0;font-size:12.5px}
+  .m .mn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+  .m .mv{color:var(--faint);font-size:11px;white-space:nowrap}
+  .m .mt{font-weight:600;min-width:60px;text-align:right}
+  .bud{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11.5px;color:var(--muted)}
+  .bud input{font-family:var(--mono);font-size:12px;width:68px;text-align:right;padding:4px 7px;border:1px solid var(--line2);
+    border-radius:7px;background:var(--paper);color:var(--ink)}
+  .bud input:focus{outline:2px solid var(--money);outline-offset:1px;border-color:transparent}
+  .bud .st{font-weight:600;margin-left:auto}
+  .bud .st.over{color:var(--red)} .bud .st.ok{color:var(--money)}
+
+  /* spending sub-views */
+  .subseg{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:12px}
+  .sub{flex:1;padding:7px 4px;border:none;background:none;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--faint);cursor:pointer;transition:.15s}
+  .sub:hover{color:var(--muted)} .sub.on{background:var(--paper);color:var(--ink)}
+  .sheetwrap{overflow-x:auto;margin:0 -18px;padding:0 18px}
+  table.sheet{border-collapse:collapse;font-size:12px;width:100%}
+  .sheet th,.sheet td{padding:7px 9px;text-align:right;white-space:nowrap;border-top:1px solid var(--line)}
+  .sheet th{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border-top:none}
+  .sheet .c1{text-align:left;position:sticky;left:0;background:var(--card);max-width:150px;overflow:hidden;text-overflow:ellipsis;font-weight:550}
+  .sheet .tot{font-weight:700}
+  .sheet tr.grand td{border-top:2px solid var(--line2);font-weight:700}
+  .sheet .dim{color:var(--faint)}
+  .txrow{display:flex;align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--line)}
+  .txrow:first-child{border-top:none}
+  .txl{flex:1;min-width:0}
+  .txl b{font-size:13px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .txd{font-size:11px;color:var(--faint)}
+  .catsel{font:inherit;font-size:11px;padding:5px 6px;border:1px solid var(--line2);border-radius:8px;background:var(--paper);color:var(--muted);max-width:118px}
+  .catsel:focus{outline:2px solid var(--money);outline-offset:1px}
+  .txa{font-weight:650;font-size:13px;white-space:nowrap}
+  .filterbox{width:100%;font:inherit;font-size:13px;padding:9px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--paper);color:var(--ink);margin-bottom:8px}
+  .filterbox:focus{outline:2px solid var(--money);outline-offset:1px}
+
+  /* stats strip */
+  .strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 13px;box-shadow:var(--shadow)}
+  .stat .k{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .stat .v{font-size:17px;font-weight:650;margin-top:3px}
+  .stat .v.neg{color:var(--red)} .stat .v.pos{color:var(--money)}
+
+  /* flags */
+  .flag{border-left:3px solid var(--amber);background:var(--amber-bg);border-radius:10px;padding:11px 13px;margin-bottom:9px}
+  .flag.red{border-left-color:var(--red);background:var(--red-bg)}
+  .flag.ok{border-left-color:var(--money);background:var(--money-bg)}
+  .flag .ft{font-size:13px;font-weight:650;margin-bottom:2px}
+  .flag .fb{font-size:12px;color:var(--muted)} .flag .fb b{color:var(--ink)}
+
+  /* bills & inputs */
+  .brow{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+  .brow:first-of-type{border-top:none}
+  .brow .bn{flex:1;min-width:0} .brow .bc{font-size:11px;color:var(--faint)} .brow .ba{font-weight:650;white-space:nowrap}
+  .x{cursor:pointer;color:var(--faint);font-size:17px;line-height:1;padding:2px 4px;background:none;border:none}
+  .x:hover{color:var(--red)}
+  .frm{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+  .frm input,.frm select{font:inherit;font-size:12.5px;padding:8px 10px;border:1px solid var(--line2);border-radius:9px;background:var(--paper);color:var(--ink)}
+  .frm input:focus,.frm select:focus{outline:2px solid var(--money);outline-offset:1px}
+  .frm .grow{flex:1;min-width:120px} .frm .amt{font-family:var(--mono);width:88px;text-align:right}
+  .btn{font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:9px;cursor:pointer;border:1px solid var(--line2);background:var(--card);transition:.15s}
+  .btn:hover{border-color:var(--ink)}
+  .btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .btn.primary:hover{opacity:.88}
+  .btn.danger:hover{border-color:var(--red);color:var(--red)}
+
+  .plan-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+  .plan-row:first-of-type{border-top:none}
+  .plan-row .pl{flex:1}
+  .pin{font-family:var(--mono);width:96px;text-align:right;padding:7px 10px;border:1px solid var(--line2);border-radius:9px;background:var(--paper);color:var(--ink);font-size:13.5px}
+  .pin:focus{outline:2px solid var(--money);outline-offset:1px}
+
+  /* empty state */
+  .steps{display:grid;gap:10px;margin:8px 0 14px}
+  .step{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);padding:13px 15px}
+  .step .n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--money);background:var(--money-bg);
+    width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
+  .step b{font-size:13.5px} .step p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+
+  /* import dialog */
+  dialog{border:none;border-radius:18px;background:var(--card);color:var(--ink);padding:0;max-width:440px;width:calc(100% - 32px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  dialog::backdrop{background:rgba(15,22,18,.45);backdrop-filter:blur(2px)}
+  .dlg{padding:20px 20px 18px}
+  .dlg h3{margin:0 0 2px;font-size:16px} .dlg .cap{font-size:12px;color:var(--muted);margin:0 0 14px}
+  .drop{border:1.5px dashed var(--line2);border-radius:12px;padding:22px 14px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:14px}
+  .drop:hover,.drop.hover{border-color:var(--money);background:var(--money-bg)}
+  .drop b{font-size:13.5px} .drop small{display:block;color:var(--muted);font-size:11.5px;margin-top:3px}
+  .dsec{border-top:1px solid var(--line);padding-top:12px;margin-top:2px}
+  .dsec .t{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+  .feedrow{display:flex;gap:7px}
+  .feedrow input{flex:1;font-family:var(--mono);font-size:11px;padding:8px 10px;border:1px solid var(--line2);border-radius:9px;background:var(--paper);color:var(--ink)}
+  .fstat{font-size:11.5px;color:var(--muted);margin-top:6px;min-height:15px}
+  .dfoot{display:flex;gap:8px;justify-content:space-between;margin-top:14px}
+  input[type=file]{display:none}
+
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);z-index:50;background:var(--ink);color:var(--paper);
+    font-size:12.5px;font-weight:600;padding:10px 16px;border-radius:999px;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(min-width:721px){.toast{bottom:28px}}
+
+  footer{margin-top:20px;font-size:11px;color:var(--faint);line-height:1.6;text-align:center}
+  .empty{text-align:center;color:var(--muted);font-size:13px;padding:22px 8px}
+  :focus-visible{outline:2px solid var(--money);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="brand">Money<em>Map</em></div>
+    <button class="impbtn" id="openImport">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg>
+      Import
+    </button>
+  </div>
+
+  <div class="rail" id="rail"></div>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-t="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Home</button>
+    <button class="tab" data-t="where"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V9M10 20V4M16 20v-8M22 20H2"/></svg>Spending</button>
+    <button class="tab" data-t="goingout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-8 9z"/><path d="M12 13v7M8 21h8"/></svg>Going out</button>
+    <button class="tab" data-t="recurring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>Recurring</button>
+    <button class="tab" data-t="trips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16l20-6-6 12-3-5z"/><path d="M22 10L9 13"/></svg>Trips</button>
+    <button class="tab" data-t="heads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/></svg>Alerts</button>
+  </nav>
+
+  <main id="view"></main>
+
+  <footer>Private by design — your transactions live only in this browser.<br>Deploy as a static site (Render / Netlify): just this file, no build step.</footer>
+</div>
+
+<dialog id="dlg">
+  <div class="dlg">
+    <h3>Import transactions</h3>
+    <p class="cap">Everything stays on this device. Nothing is uploaded anywhere.</p>
+    <div class="drop" id="drop">
+      <b>Drop CIBC CSV files</b> — or click to choose
+      <small>Chequing and credit card exports · any months · duplicates are ignored</small>
+    </div>
+    <input type="file" id="file" accept=".csv,text/csv" multiple>
+    <div class="dsec">
+      <div class="t">Auto-sync from Gmail</div>
+      <div class="feedrow">
+        <input id="feedUrl" placeholder="paste your Apps Script feed URL (…/exec?k=secret)" spellcheck="false">
+        <button class="btn" id="syncBtn">Sync</button>
+      </div>
+      <div class="fstat" id="feedStat"></div>
+    </div>
+    <div class="dfoot">
+      <button class="btn danger" id="resetBtn">Reset all data</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="sampleBtn">Load sample</button>
+        <button class="btn primary" id="closeDlg">Done</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= storage ================= */
+const mem={};
+const store={
+  get(k){ try{ const v=localStorage.getItem(k); return v==null?null:v; }catch(e){ return mem[k]??null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } }
+};
+const KEY_TX='mm_tx_v1', KEY_BILLS='mm_bills_v1', KEY_BUD='mm_budgets_v1', KEY_SET='mm_settings_v1', KEY_TRIPS='mm_trips_v1', KEY_CATOV='mm_catov_v1';
+
+/* ================= categorization ================= */
+const NYC=['MAMAN','PICCOLA','LE BAIN','KNOCKDOWN','7TH STREET','BEST FLAVOR','DOS TOROS','FOGON','E SMOKE','SPEED FIX','PHIL CAFE','CITY ISLAND','CARMELA','MTA*NYCT','NYC'];
+const RULES=[
+  [['AIR CANADA'],'Air Canada','Travel'],
+  [NYC,'New York / travel','Travel'],
+  [['CHEXY'],'Rent (Chexy)','Rent'],
+  [['TDC LANDLORD'],'Rent (landlord)','Rent'],
+  [['CLAUDE.AI','CLAUDEAI','ANTHROPIC'],'Claude.ai / Anthropic','Subscriptions'],
+  [['CURSOR'],'Cursor','Subscriptions'],
+  [['LOVABLE'],'Lovable','Subscriptions'],
+  [['DIGITALOCEAN'],'DigitalOcean','Subscriptions'],
+  [['CLOUDFLARE'],'Cloudflare','Subscriptions'],
+  [['SPOTIFY'],'Spotify','Subscriptions'],
+  [['APPLE.COM'],'Apple','Subscriptions'],
+  [['PRIME MEMBER','AMAZON PRIME'],'Amazon Prime','Subscriptions'],
+  [['UBERONE'],'Uber One','Subscriptions'],
+  [['TIXR','DICE.FM','TICKETMASTER'],'Event tickets','Entertainment'],
+  [['ALLEZ UP','SOCCEROOF','AKRENIM','BEAVERTAILS'],'Activities','Entertainment'],
+  [['UBEREATS','UBER CANADA/UBE','DOORDASH'],'Uber Eats / DoorDash','Food delivery'],
+  [['TIM HORTONS'],'Tim Hortons','Cafés'],
+  [['KAHWA','STARBUCKS','BALZAC','KRISPY','GIBEAU','MELK','OLIMPICO','2ND GEN','COFFEE',' CAFE','CAFE ','CAFÉ'],'Cafés & coffee','Cafés'],
+  [['LES TROIS MONKEYS','BAR FURCO','BAR COCKTAIL','BAR LE MAL','BAR BISOU','STEREO BAR','SIR WINSTON',"MCLEAN'S",'THIS IS HOUSE',"LAMBO'S",'MELROSE','PI CO','PUBLIC BUTTER','LA CAGE','BRASSERIE','BEIRUTHOUS','BAYRUT'],'Bars & nightlife','Bars & nightlife'],
+  [['SAQ'],'SAQ (liquor)','Liquor'],
+  [['SQDC','SHINYBUD'],'Cannabis (SQDC/Shinybud)','Cannabis'],
+  [['POULET ROUGE','SHAWARMAZ','MANGA BISTRO','PANGEA','MALAK AL TAWOUK','BOUSTAN','SOUVLAKI','SUBWAY',"MCDONALD'S",'WENDYS','TACO BELL','A&W','PIZZA','HARVEYS','SCHWARTZ','SUSHI HIDDEN','YAMA','CHEF ISTANBUL',"JOE'S",'MAGGIE OAKES','COLD ROOM','SHAKA','JREECH','STILLIFE','LULU','BABY','QDC BURGER','LE POKE','YUMI','AMIR','PATTY SLAPS','DAM SANDWICH','O FOUR','ONROUTE','MEMENTO','BURGER','DELI'],'Restaurants (dining)','Dining'],
+  [['INSTACART','COSTCO'],'Instacart / Costco','Groceries'],
+  [['PROVIGO','METRO','MAXI','ABU ELIAS','EPICERIE','MARCHE STANLEY'],'Grocery store','Groceries'],
+  [['DEPANNEUR','TABAGIE','KALEMART','BEAU SOIR','BELLE','BONVIVANT','NOORI','LOBO','VESTIAIRE'],'Dépanneurs','Dépanneurs'],
+  [['NAYAX','SH VENDING'],'Vending machines','Dépanneurs'],
+  [['DOLLARAMA','WINNERS','HOMESENSE','SIMONS','NIKE','UNIQLO','BEST BUY','SPORTS EXPERTS','WAL-MART','MAD DISTRIB','IKEA','AMZN','AMAZON'],'Shopping & retail','Shopping'],
+  [['STM ','STM','REM ','REM','PRESTO','AGENCE MOBILITE','BIXI','BIKE SHARE'],'Transit (STM/REM)','Transit'],
+  [['LYFT','UBERTRIP','UBER CANADA/UBERTRIP'],'Uber / Lyft rides','Rideshare'],
+  [['COUCHETARD','COUCHE-TARD'],'Couche-Tard','Gas & convenience'],
+  [['SHELL','PETRO-CANADA','ESSO','ULTRAMAR','ECONO GAS',"HERB'S"],'Gas stations','Gas & convenience'],
+  [['COMMUNAUTO','POPARIDE','ENTERPRISE'],'Communauto / rental','Car share'],
+  [['PHARMAPRIX','JEAN COUTU','HOPITAL','CENTRE MEDICAL','UHC','FONDATION SANTE'],'Pharmacy & medical','Health'],
+  [['BELL MOBILITY'],'Bell (phone)','Phone & utilities'],
+  [['HYDRO'],'Hydro-Québec','Phone & utilities'],
+  [['BENEVA'],'Beneva (insurance)','Insurance'],
+  [['AFFIRM','GOCARDLESS'],'Affirm / installment','Installment'],
+  [['INTEREST','SERVICE CHARGE','NSF','OVERDRAFT','NETWORK TRANSACTION FEE','FOREIGN CURRENCY'],'Fees & interest','Fees'],
+  [['ATM','CASH ADVANCE','WHISH','CONSTAT','INFRACTION','ENROLLMENT','MISC ADJUSTMENT','FULFILL REQUEST'],'Cash, fines & app payments','Cash & misc'],
+];
+const GOING_OUT=new Set(['Dining','Food delivery','Bars & nightlife','Cafés','Liquor','Cannabis','Rideshare','Entertainment','Dépanneurs']);
+const CAT_COLORS={Rent:'#7D4E79',Groceries:'#1E9E6A',Dining:'#C94F3D','Food delivery':'#D97A4C','Bars & nightlife':'#A84A6B','Cafés':'#C08327','Dépanneurs':'#94892F',Liquor:'#8A5A44',Cannabis:'#4F8A4F',Transit:'#2F6FB0',Rideshare:'#4A8FBF','Gas & convenience':'#5B6B8A','Car share':'#6F8FA8',Shopping:'#B76F9B',Subscriptions:'#7D4E79','Phone & utilities':'#5B6B8A',Insurance:'#6B7280',Installment:'#A84A6B',Health:'#1E9E6A',Entertainment:'#C08327',Travel:'#2F6FB0',Fees:'#C94F3D','Cash & misc':'#93A096',Other:'#93A096'};
+const upper=s=>(s||'').toUpperCase();
+function categorize(desc){
+  const u=upper(desc);
+  for(const [kw,m,c] of RULES){ for(const k of kw){ if(u.includes(k)) return {m,c}; } }
+  return {m:(desc||'Other').replace(/\s+/g,' ').trim().slice(0,28),c:'Other'};
+}
+function special(desc){
+  const u=upper(desc);
+  if(u.includes('TDC LANDLORD')||u.includes('CHEXY')) return null;
+  if(u.includes('PAYMENT THANK YOU')||u.includes('PAIEMENT MERCI')) return 'cardpay';
+  if(u.includes('TO CARD')||u.includes('INTERNET TRANSFER')) return 'transfer';
+  if(u.includes('E-TRANSFER')) return 'transfer';
+  return null;
+}
+
+/* ================= CSV parsing ================= */
+function splitCSV(line){
+  const out=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){const ch=line[i];
+    if(ch=='"'){ if(q&&line[i+1]=='"'){cur+='"';i++;} else q=!q; }
+    else if(ch==','&&!q){ out.push(cur);cur=''; }
+    else cur+=ch;
+  } out.push(cur); return out.map(s=>s.trim());
+}
+const DATE_RE=[/^(\d{4})-(\d{2})-(\d{2})$/, /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/];
+function parseDate(s){
+  s=(s||'').trim();
+  let m=s.match(DATE_RE[0]); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m=s.match(DATE_RE[1]); if(m){ const mo=m[1].padStart(2,'0'),d=m[2].padStart(2,'0'); return `${m[3]}-${mo}-${d}`; }
+  const d=new Date(s); if(!isNaN(d)&&/\d/.test(s)) return d.toISOString().slice(0,10);
+  return null;
+}
+const isNum=s=>/^-?\$?\s*[\d,]+\.?\d*$/.test((s||'').replace(/\s/g,'')) && /\d/.test(s||'');
+const toNum=s=>parseFloat((s||'').replace(/[^0-9.\-]/g,''))||0;
+const isCard=s=>/x{2,}/i.test(s||'')||/\d{12,}/.test((s||'').replace(/\D/g,''));
+function parseCSV(text){
+  const rows=text.split(/\r?\n/).filter(r=>r.trim().length);
+  const txs=[]; let skipped=0;
+  for(const raw of rows){
+    const cells=splitCSV(raw);
+    if(cells.length<3){skipped++;continue;}
+    let di=-1; for(let i=0;i<cells.length;i++){ if(parseDate(cells[i])){di=i;break;} }
+    if(di<0){skipped++;continue;}
+    const date=parseDate(cells[di]);
+    const nums=[]; for(let i=0;i<cells.length;i++){ if(i===di) continue; if(isCard(cells[i])) continue; if(isNum(cells[i])) nums.push({i,v:cells[i]}); }
+    let desc='',best=-1;
+    for(let i=0;i<cells.length;i++){ if(i===di) continue; if(isNum(cells[i])||isCard(cells[i])) continue; if(cells[i].length>best){best=cells[i].length;desc=cells[i];} }
+    if(!desc) desc='(no description)';
+    let out=0, inn=0;
+    if(nums.length>=2){ out=Math.abs(toNum(nums[0].v)); inn=Math.abs(toNum(nums[1].v)); }
+    else if(nums.length===1){ const v=toNum(nums[0].v); if(v<0) out=Math.abs(v); else inn=v; }
+    else {skipped++;continue;}
+    if(out>0) txs.push({date,desc,amt:out,dir:'out'});
+    if(inn>0) txs.push({date,desc,amt:inn,dir:'in'});
+  }
+  return {txs,skipped};
+}
+
+/* ================= state ================= */
+let TX = JSON.parse(store.get(KEY_TX)||'[]');
+let BILLS = JSON.parse(store.get(KEY_BILLS)|| JSON.stringify([
+  {name:'Rent',amt:1710,cad:'monthly',cat:'Rent'},
+  {name:'Affirm / installment',amt:343,cad:'monthly',cat:'Installment'},
+  {name:'Bell (phone)',amt:124,cad:'monthly',cat:'Phone & utilities'},
+  {name:'Hydro-Québec',amt:110,cad:'monthly',cat:'Phone & utilities'},
+  {name:'Beneva (insurance)',amt:37,cad:'monthly',cat:'Insurance'},
+]));
+let BUDGETS = JSON.parse(store.get(KEY_BUD)||'{}');
+let SETTINGS = JSON.parse(store.get(KEY_SET)|| JSON.stringify({income:3890, savings:300}));
+if(!('feed' in SETTINGS)) SETTINGS.feed='';
+let TRIPS = JSON.parse(store.get(KEY_TRIPS)||'[]');
+let OVR = JSON.parse(store.get(KEY_CATOV)||'{}');
+let TAB='home', MONTH='all', SUB='cats', FILTER='', TXVIEW=[], drillOpen={};
+const txKey=t=>`${t.date}|${upper(t.desc).slice(0,40)}|${t.amt}|${t.dir}`;
+const saveTX=()=>store.set(KEY_TX,JSON.stringify(TX));
+const saveBills=()=>store.set(KEY_BILLS,JSON.stringify(BILLS));
+const saveBud=()=>store.set(KEY_BUD,JSON.stringify(BUDGETS));
+const saveSet=()=>store.set(KEY_SET,JSON.stringify(SETTINGS));
+const saveTrips=()=>store.set(KEY_TRIPS,JSON.stringify(TRIPS));
+const saveOvr=()=>store.set(KEY_CATOV,JSON.stringify(OVR));
+function catOf(t){ return OVR[txKey(t)]||categorize(t.desc).c; }
+function addTxs(list){
+  const have=new Set(TX.map(txKey)); let added=0;
+  for(const t of list){ const k=txKey(t); if(!have.has(k)){ TX.push(t); have.add(k); added++; } }
+  saveTX(); return added;
+}
+
+/* ================= helpers ================= */
+const CAD=n=>(n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString('en-CA');
+const CAD2=n=>(n<0?'-$':'$')+Math.abs(n).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtDate=d=>{const x=new Date(d+'T00:00');return x.toLocaleDateString('en-CA',{month:'short',day:'numeric'});};
+const monthName=m=>{const x=new Date(m+'-15T00:00');return x.toLocaleDateString('en-CA',{month:'long',year:'numeric'});};
+const dow=d=>new Date(d+'T00:00').getDay();
+const inMonth=t=>MONTH==='all'||t.date.slice(0,7)===MONTH;
+function spendAll(){ return TX.filter(t=>t.dir==='out' && !special(t.desc)); }
+function incomeAll(){ return TX.filter(t=>t.dir==='in' && !special(t.desc)); }
+function spendF(){ return spendAll().filter(inMonth); }
+function incomeF(){ return incomeAll().filter(inMonth); }
+function monthsAvailable(){ return [...new Set(TX.map(t=>t.date.slice(0,7)))].sort().reverse(); }
+function monthsSpanAll(){ const ms=monthsAvailable(); return Math.max(1,ms.length); }
+function spanF(){ return MONTH==='all'?monthsSpanAll():1; }
+function byCategoryF(){
+  const cats={};
+  for(const t of spendF()){ const m=categorize(t.desc).m, c=catOf(t); cats[c]=cats[c]||{total:0,merch:{}}; cats[c].total+=t.amt;
+    cats[c].merch[m]=cats[c].merch[m]||{total:0,n:0}; cats[c].merch[m].total+=t.amt; cats[c].merch[m].n++; }
+  return cats;
+}
+const sumOutF=()=>spendF().reduce((s,t)=>s+t.amt,0);
+const sumInF=()=>incomeF().reduce((s,t)=>s+t.amt,0);
+const billMonthly=()=>BILLS.reduce((s,b)=>s+(b.cad==='yearly'?b.amt/12:b.cad==='weekly'?b.amt*4.33:b.amt),0);
+
+/* ================= views ================= */
+const view=document.getElementById('view');
+function catRow(c,d,denom,opts){
+  opts=opts||{};
+  const pct=denom?d.total/denom:0;
+  const col=CAT_COLORS[c]||'#93A096';
+  const merch=Object.entries(d.merch).sort((a,b)=>b[1].total-a[1].total).slice(0,opts.max||99)
+    .map(([m,v])=>`<div class="m"><span class="mn">${m}</span><span class="mv">${v.n}×</span><span class="mt mono">${CAD(v.total)}</span></div>`).join('');
+  let budHTML='';
+  if(opts.budget){
+    const span=opts.span||1, perMo=d.total/span, b=BUDGETS[c]||0;
+    let st='set a budget →', scls='';
+    if(b){ if(perMo>b){st=CAD(perMo-b)+' over';scls='over';} else {st=CAD(b-perMo)+' left';scls='ok';} }
+    budHTML=`<div class="bud" onclick="event.stopPropagation()">
+      <span>${CAD(perMo)}/mo · budget</span>
+      <input class="mono" data-bud="${c}" value="${b||''}" placeholder="0" inputmode="decimal">
+      <span class="st ${scls}">${st}</span></div>`;
+  }
+  return `<div class="cat ${drillOpen[c]?'open':''}" data-cat="${c}">
+    <div class="row1"><span class="dot" style="background:${col}"></span>
+      <span class="nm">${c}</span><span class="amt mono">${CAD(d.total)}</span>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+    <div class="track"><div class="fill" style="width:${Math.min(pct*100,100)}%;background:${col}"></div></div>
+    ${budHTML}
+    <div class="drill">${merch}</div>
+  </div>`;
+}
+function scopeLabel(){ return MONTH==='all' ? `all ${monthsSpanAll()} months loaded` : monthName(MONTH); }
+
+function vHome(){
+  const out=sumOutF(), inc=sumInF(), kept=inc-out;
+  const cats=byCategoryF();
+  const sorted=Object.entries(cats).sort((a,b)=>b[1].total-a[1].total);
+  const go=sorted.filter(([c])=>GOING_OUT.has(c)).reduce((s,[,d])=>s+d.total,0);
+  const bm=billMonthly(), safe=SETTINGS.income-bm-SETTINGS.savings;
+  const perMo=out/spanF();
+  const eyebrow=MONTH==='all'?'All months · ledger':monthName(MONTH)+' · ledger';
+  const flags=headsFlagsCount();
+  return `
+  <div class="receipt">
+    <div class="eyebrow">${eyebrow}</div>
+    <div class="line"><span>Money in</span><b class="mono">${CAD(inc)}</b></div>
+    <div class="line"><span>Money out</span><b class="mono">${CAD(out)}</b></div>
+    <hr class="tear">
+    <div class="total"><span class="lbl">${kept>=0?'Kept':'Overspent'}</span>
+      <span class="big mono ${kept>=0?'pos':'neg'}">${CAD(Math.abs(kept))}</span></div>
+    <div class="plan">Plan: <b class="mono">${CAD(safe)}</b>/mo safe after bills &amp; savings — you're averaging <b class="mono">${CAD(perMo)}</b>/mo${perMo>safe?' · over plan':''}</div>
+  </div>
+  <div class="strip">
+    <div class="stat"><div class="k">Going out</div><div class="v mono">${CAD(go)}</div></div>
+    <div class="stat"><div class="k">Share of spend</div><div class="v mono">${out?Math.round(go/out*100):0}%</div></div>
+    <div class="stat"><div class="k">Bills / mo</div><div class="v mono">${CAD(bm)}</div></div>
+  </div>
+  ${flags?`<div class="card" style="cursor:pointer" id="goHeads"><div class="chead" style="margin:0"><h2>⚠ ${flags} thing${flags>1?'s':''} worth a look</h2><span class="link">Review →</span></div></div>`:''}
+  <div class="card">
+    <div class="chead"><h2>Top spending</h2><button class="link" id="goWhere">All categories →</button></div>
+    ${sorted.slice(0,5).map(([c,d])=>catRow(c,d,out,{max:4})).join('')||'<div class="empty">No spending in this period.</div>'}
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Monthly plan</h2><span class="cap">saved automatically</span></div>
+    <div class="plan-row"><span class="pl">Take-home income / month</span><input class="pin mono" id="setIncome" value="${SETTINGS.income}" inputmode="decimal"></div>
+    <div class="plan-row"><span class="pl">Savings goal / month</span><input class="pin mono" id="setSavings" value="${SETTINGS.savings}" inputmode="decimal"></div>
+  </div>`;
+}
+function vWhere(){
+  const seg=`<div class="subseg">
+    <button class="sub ${SUB==='cats'?'on':''}" data-sub="cats">Categories</button>
+    <button class="sub ${SUB==='sheet'?'on':''}" data-sub="sheet">Sheet</button>
+    <button class="sub ${SUB==='tx'?'on':''}" data-sub="tx">Transactions</button></div>`;
+  if(SUB==='sheet') return seg+vSheet();
+  if(SUB==='tx') return seg+vTx();
+  const out=sumOutF(), cats=byCategoryF(), span=spanF();
+  const sorted=Object.entries(cats).sort((a,b)=>b[1].total-a[1].total);
+  return seg+`<div class="card">
+    <div class="chead"><h2>Where every dollar went</h2><span class="cap">${scopeLabel()}</span></div>
+    <p class="cap" style="margin-bottom:10px">${CAD(out)} out · tap a category for places · set monthly budgets</p>
+    ${sorted.map(([c,d])=>catRow(c,d,out,{budget:true,span})).join('')||'<div class="empty">No spending in this period.</div>'}
+  </div>`;
+}
+function vSheet(){
+  const ms=monthsAvailable().slice().reverse();
+  const grid={}, catT={}, monT={}, goT={}; let grand=0;
+  for(const t of spendAll()){ const c=catOf(t), mo=t.date.slice(0,7);
+    (grid[c]=grid[c]||{})[mo]=(grid[c][mo]||0)+t.amt; catT[c]=(catT[c]||0)+t.amt; monT[mo]=(monT[mo]||0)+t.amt; grand+=t.amt;
+    if(GOING_OUT.has(c)) goT[mo]=(goT[mo]||0)+t.amt; }
+  const rows=Object.keys(catT).sort((a,b)=>catT[b]-catT[a]);
+  const mlbl=m=>new Date(m+'-15T00:00').toLocaleDateString('en-CA',{month:'short'});
+  const goAll=Object.values(goT).reduce((a,b)=>a+b,0);
+  const head=`<tr><th class="c1">Category</th>${ms.map(m=>`<th>${mlbl(m)}</th>`).join('')}<th>Total</th><th>/mo</th></tr>`;
+  const body=rows.map(c=>`<tr><td class="c1"><span class="dot" style="background:${CAT_COLORS[c]||'#93A096'};display:inline-block;vertical-align:1px;margin-right:6px"></span>${c}</td>${ms.map(m=>{const v=(grid[c]&&grid[c][m])||0;return `<td class="mono ${v?'':'dim'}">${v?CAD(v):'·'}</td>`;}).join('')}<td class="mono tot">${CAD(catT[c])}</td><td class="mono">${CAD(catT[c]/ms.length)}</td></tr>`).join('');
+  const goRow=`<tr><td class="c1 dim">of which: going out</td>${ms.map(m=>`<td class="mono dim">${goT[m]?CAD(goT[m]):'·'}</td>`).join('')}<td class="mono dim">${CAD(goAll)}</td><td class="mono dim">${CAD(goAll/ms.length)}</td></tr>`;
+  const totRow=`<tr class="grand"><td class="c1">Total</td>${ms.map(m=>`<td class="mono">${CAD(monT[m]||0)}</td>`).join('')}<td class="mono">${CAD(grand)}</td><td class="mono">${CAD(grand/ms.length)}</td></tr>`;
+  return `<div class="card">
+    <div class="chead"><h2>Expense sheet</h2><button class="link" id="expcsv">Download CSV →</button></div>
+    <p class="cap" style="margin-bottom:8px">Every category, every month. This view always shows all loaded months.</p>
+    <div class="sheetwrap"><table class="sheet"><thead>${head}</thead><tbody>${body}${goRow}${totRow}</tbody></table></div>
+  </div>`;
+}
+function buildTxRows(){
+  const f=FILTER.trim().toLowerCase();
+  const cats=Object.keys(CAT_COLORS);
+  const rows=TXVIEW.map((t,i)=>{
+    const auto=categorize(t.desc), cur=OVR[txKey(t)]||auto.c;
+    if(f && !(t.desc.toLowerCase().includes(f)||auto.m.toLowerCase().includes(f)||cur.toLowerCase().includes(f))) return '';
+    const opts=cats.map(c=>`<option ${c===cur?'selected':''}>${c}</option>`).join('');
+    return `<div class="txrow"><span class="dot" style="background:${CAT_COLORS[cur]||'#93A096'}"></span>
+      <div class="txl"><b>${auto.m}</b><span class="txd">${fmtDate(t.date)} · ${t.desc.slice(0,42)}</span></div>
+      <select class="catsel" data-i="${i}" aria-label="Category">${opts}</select>
+      <span class="txa mono">−${CAD(t.amt)}</span></div>`;
+  }).join('');
+  return rows||'<div class="empty">No matches.</div>';
+}
+function vTx(){
+  let txs=spendF().slice().sort((a,b)=> a.date<b.date?1: a.date>b.date?-1: b.amt-a.amt);
+  const note = (MONTH==='all' && txs.length>80) ? `<p class="cap" style="margin:0 0 8px">Showing the latest 80 of ${txs.length} — pick a month above to see all of that month.</p>` : '';
+  if(MONTH==='all') txs=txs.slice(0,80);
+  TXVIEW=txs;
+  return `<div class="card">
+    <div class="chead"><h2>Transactions</h2><span class="cap">${scopeLabel()}</span></div>
+    ${note}
+    <input class="filterbox" id="txfilter" placeholder="Filter — try &quot;pharma&quot;, &quot;tim&quot;, &quot;uber&quot;…" value="${FILTER.replace(/"/g,'&quot;')}">
+    <p class="cap" style="margin:0 0 6px">Wrong bucket? Change the category on any line — it sticks.</p>
+    <div id="txlist">${buildTxRows()}</div>
+  </div>`;
+}
+function exportSheet(){
+  const ms=monthsAvailable().slice().reverse();
+  const grid={},catT={},monT={};let grand=0;
+  for(const t of spendAll()){const c=catOf(t),mo=t.date.slice(0,7);(grid[c]=grid[c]||{})[mo]=(grid[c][mo]||0)+t.amt;catT[c]=(catT[c]||0)+t.amt;monT[mo]=(monT[mo]||0)+t.amt;grand+=t.amt;}
+  const rows=Object.keys(catT).sort((a,b)=>catT[b]-catT[a]);
+  const esc=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const lines=[['Category',...ms,'Total','Avg per month'].map(esc).join(',')];
+  rows.forEach(c=>lines.push([c,...ms.map(m=>((grid[c]&&grid[c][m])||0).toFixed(2)),catT[c].toFixed(2),(catT[c]/ms.length).toFixed(2)].map(esc).join(',')));
+  lines.push(['Total',...ms.map(m=>(monT[m]||0).toFixed(2)),grand.toFixed(2),(grand/ms.length).toFixed(2)].map(esc).join(','));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='expense-sheet.csv';a.click();URL.revokeObjectURL(a.href);
+  toast('Sheet downloaded');
+}
+function wireTxSelects(){
+  view.querySelectorAll('.catsel').forEach(sel=>sel.onchange=()=>{
+    const t=TXVIEW[+sel.dataset.i]; if(!t) return;
+    const k=txKey(t), auto=categorize(t.desc).c, v=sel.value;
+    if(v===auto) delete OVR[k]; else OVR[k]=v;
+    saveOvr(); toast('Category updated'); render();
+  });
+}
+function vGoingOut(){
+  const cats=byCategoryF(), out=sumOutF(), span=spanF();
+  const goE=Object.entries(cats).filter(([c])=>GOING_OUT.has(c)).sort((a,b)=>b[1].total-a[1].total);
+  const go=goE.reduce((s,[,d])=>s+d.total,0);
+  let wknd=0,wkdy=0;
+  for(const t of spendF()){ const c=catOf(t); if(!GOING_OUT.has(c)) continue; const d=dow(t.date); if(d===5||d===6||d===0) wknd+=t.amt; else wkdy+=t.amt; }
+  const mall={};
+  for(const t of spendF()){ const m=categorize(t.desc).m, c=catOf(t); if(!GOING_OUT.has(c)) continue; mall[m]=mall[m]||{total:0,n:0}; mall[m].total+=t.amt; mall[m].n++; }
+  const topM=Object.entries(mall).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+  const mx=Math.max(wknd,wkdy,1);
+  return `
+  <div class="receipt">
+    <div class="eyebrow">Going out · ${scopeLabel()}</div>
+    <div class="line"><span>Weekends (Fri–Sun)</span><b class="mono">${CAD(wknd)}</b></div>
+    <div class="line"><span>Weekdays</span><b class="mono">${CAD(wkdy)}</b></div>
+    <hr class="tear">
+    <div class="total"><span class="lbl">${CAD(go/span)}/mo · ${out?Math.round(go/out*100):0}% of spend</span>
+      <span class="big mono">${CAD(go)}</span></div>
+  </div>
+  <div class="card">
+    <div class="chead"><h2>By type</h2></div>
+    ${goE.map(([c,d])=>catRow(c,d,go,{max:4})).join('')||'<div class="empty">Nothing here for this period.</div>'}
+  </div>
+  <div class="card">
+    <div class="chead"><h2>The places taking the most</h2></div>
+    ${topM.map(([m,v])=>`<div class="m" style="padding:7px 0;border-top:1px solid var(--line)"><span class="mn" style="color:var(--ink);font-weight:550">${m}</span><span class="mv">${v.n}× · ~${CAD(v.total/span)}/mo</span><span class="mt mono">${CAD(v.total)}</span></div>`).join('')||'<div class="empty">—</div>'}
+  </div>`;
+}
+function detectRecurring(){
+  const byM={};
+  for(const t of spendAll()){ const m=categorize(t.desc).m, c=catOf(t); if(c==='Rent') continue; (byM[m]=byM[m]||[]).push(t); }
+  const out=[]; const ds=TX.map(t=>t.date).sort(); const lastDate=ds[ds.length-1];
+  for(const [m,list] of Object.entries(byM)){
+    const months=new Set(list.map(t=>t.date.slice(0,7)));
+    if(months.size>=2){
+      const total=list.reduce((s,t)=>s+t.amt,0), perMonth=total/months.size;
+      const last=list.map(t=>t.date).sort().slice(-1)[0];
+      let unused=false;
+      if(lastDate){ const gap=(new Date(lastDate)-new Date(last))/86400000; if(gap>40) unused=true; }
+      out.push({m,perMonth,months:months.size,last,unused,cat:categorize(list[0].desc).c});
+    }
+  }
+  return out.sort((a,b)=>b.perMonth-a.perMonth);
+}
+function vRecurring(){
+  const rec=detectRecurring(), bm=billMonthly();
+  const subMo=rec.reduce((s,r)=>s+r.perMonth,0);
+  const cats=Object.keys(CAT_COLORS);
+  return `
+  <div class="receipt">
+    <div class="eyebrow">Committed every month</div>
+    <div class="line"><span>Your bills</span><b class="mono">${CAD(bm)}</b></div>
+    <div class="line"><span>Detected recurring</span><b class="mono">~${CAD(subMo)}</b></div>
+    <hr class="tear">
+    <div class="total"><span class="lbl">before anything fun</span><span class="big mono">${CAD(bm+subMo)}</span></div>
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Your bills</h2><span class="cap">${CAD(bm*12)}/yr</span></div>
+    ${BILLS.map((b,i)=>`<div class="brow"><span class="bn">${b.name} <span class="bc">${b.cat} · ${b.cad}</span></span><span class="ba mono">${CAD(b.amt)}</span><button class="x" data-del="${i}" aria-label="Remove ${b.name}">×</button></div>`).join('')||'<div class="empty">No bills yet — add your first below.</div>'}
+    <div class="frm">
+      <input class="grow" id="bn" placeholder="Bill name (e.g. Gym)">
+      <input class="amt mono" id="ba" placeholder="$" inputmode="decimal">
+      <select id="bcad"><option value="monthly">monthly</option><option value="weekly">weekly</option><option value="yearly">yearly</option></select>
+      <select id="bcat">${cats.map(c=>`<option>${c}</option>`).join('')}</select>
+      <button class="btn primary" id="addBill">Add bill</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Detected from transactions</h2><span class="cap">charged in 2+ months</span></div>
+    ${rec.length?rec.map(r=>`<div class="brow"><span class="bn">${r.m} ${r.unused?`<span class="bc" style="color:var(--amber)">· last seen ${fmtDate(r.last)} — still using it?</span>`:`<span class="bc">${r.cat}</span>`}</span><span class="ba mono">~${CAD(r.perMonth)}/mo</span></div>`).join(''):'<div class="empty">Load a couple of months of data to detect recurring charges.</div>'}
+  </div>`;
+}
+function tripStats(trip){
+  const txs=spendAll().filter(t=>t.date>=trip.from && t.date<=trip.to);
+  const total=txs.reduce((s,t)=>s+t.amt,0);
+  const days=Math.max(1,Math.round((new Date(trip.to)-new Date(trip.from))/86400000)+1);
+  const cats={};
+  for(const t of txs){ const m=categorize(t.desc).m, c=catOf(t); cats[c]=cats[c]||{total:0,merch:{}}; cats[c].total+=t.amt; cats[c].merch[m]=cats[c].merch[m]||{total:0,n:0}; cats[c].merch[m].total+=t.amt; cats[c].merch[m].n++; }
+  return {txs,total,days,cats};
+}
+function vTrips(){
+  const form=`<div class="card">
+    <div class="chead"><h2>Track a trip</h2></div>
+    <p class="cap" style="margin-bottom:10px">Name it, set the dates — every charge in that window becomes the trip's expense report.</p>
+    <div class="frm">
+      <input class="grow" id="tn" placeholder="Trip name (e.g. New York)">
+      <input id="tf" type="date"><input id="tt" type="date">
+      <button class="btn primary" id="addTrip">Add trip</button>
+    </div></div>`;
+  if(!TRIPS.length) return form+`<div class="card"><div class="empty">No trips yet. Try <b>New York · Mar 5 → Mar 10</b> if your March data is loaded.</div></div>`;
+  const totalAll=spendAll().reduce((s,t)=>s+t.amt,0);
+  return form+TRIPS.map((trip,i)=>{
+    const s=tripStats(trip);
+    const normalDaily=((totalAll-s.total)/Math.max(1,monthsSpanAll()))/30.4;
+    const extra=s.total-normalDaily*s.days;
+    const sorted=Object.entries(s.cats).sort((a,b)=>b[1].total-a[1].total);
+    return `<div class="card">
+      <div class="chead"><h2>${trip.name}</h2><button class="x" data-deltrip="${i}" aria-label="Remove trip">×</button></div>
+      <p class="cap">${fmtDate(trip.from)} → ${fmtDate(trip.to)} · ${s.days} days · ${s.txs.length} charges</p>
+      <div style="margin:10px 0 4px"><span class="mono" style="font-size:30px;font-weight:650">${CAD(s.total)}</span>
+        <span class="cap"> · ${CAD(s.total/s.days)}/day${s.total>0?` · ~${CAD(Math.max(0,extra))} above home burn rate`:''}</span></div>
+      ${sorted.map(([c,d])=>catRow(c, d, s.total,{max:5})).join('')||'<div class="empty">No charges in this range — import the CSVs covering these dates.</div>'}
+    </div>`;
+  }).join('');
+}
+function headsData(){
+  const sp=spendAll();
+  const dups=[]; const seen=[];
+  for(const t of sp){ const {m}=categorize(t.desc);
+    for(const s of seen){ if(s.m===m && Math.abs(s.amt-t.amt)<0.01 && Math.abs(new Date(s.date)-new Date(t.date))/86400000<=6){ dups.push([s,t,m]); } }
+    seen.push({...t,m});
+  }
+  const uniqD=new Map(); dups.forEach(([s,t,m])=>{const k=m+'|'+s.amt; if(!uniqD.has(k)) uniqD.set(k,[s,t,m]);});
+  const fees=sp.filter(t=>catOf(t)==='Fees');
+  const unused=detectRecurring().filter(r=>r.unused);
+  return {uniqD,fees,unused,sp};
+}
+function headsFlagsCount(){ const {uniqD,fees,unused}=headsData(); return (uniqD.size?1:0)+(fees.length?1:0)+(unused.length?1:0); }
+function vHeads(){
+  const {uniqD,fees,unused,sp}=headsData();
+  const feeTotal=fees.reduce((s,t)=>s+t.amt,0);
+  const big=[...sp].sort((a,b)=>b.amt-a.amt).slice(0,5);
+  let html='';
+  if(uniqD.size) html+=`<div class="flag red"><div class="ft">Possible duplicate charges (${uniqD.size})</div><div class="fb">`+
+    [...uniqD.values()].map(([s,t,m])=>`<b>${m}</b> — ${CAD2(t.amt)} on ${fmtDate(s.date)} and again ${fmtDate(t.date)}. Check you weren't billed twice.`).join('<br>')+`</div></div>`;
+  if(feeTotal>0) html+=`<div class="flag red"><div class="ft">${CAD(feeTotal)} paid in fees &amp; interest</div><div class="fb">`+
+    fees.slice(0,6).map(t=>`${fmtDate(t.date)} — ${t.desc.slice(0,40)}: <b>${CAD2(t.amt)}</b>`).join('<br>')+
+    `<br><br>Paying the card in full each month makes the interest part disappear.</div></div>`;
+  if(unused.length) html+=`<div class="flag"><div class="ft">Maybe-forgotten subscriptions (${unused.length})</div><div class="fb">`+
+    unused.map(r=>`<b>${r.m}</b> ~${CAD(r.perMonth)}/mo — last charge ${fmtDate(r.last)}. Still using it?`).join('<br>')+`</div></div>`;
+  html+=`<div class="flag ok"><div class="ft">Your 5 biggest single charges</div><div class="fb">`+
+    (big.map(t=>`${fmtDate(t.date)} — ${categorize(t.desc).m}: <b>${CAD(t.amt)}</b>`).join('<br>')||'—')+`</div></div>`;
+  return `<div class="card"><div class="chead"><h2>Things worth a look</h2><span class="cap">auto-flagged, all data</span></div>${html}</div>`;
+}
+function vEmpty(){
+  return `
+  <div class="receipt">
+    <div class="eyebrow">Getting started</div>
+    <div class="total" style="margin-top:6px"><span class="lbl">See where your money goes in</span><span class="big mono pos">2 min</span></div>
+  </div>
+  <div class="steps">
+    <div class="step"><span class="n">1</span><div><b>Export a CSV from CIBC</b><p>Online banking → your account → download transactions. Chequing and credit card both work.</p></div></div>
+    <div class="step"><span class="n">2</span><div><b>Import it here</b><p>Tap Import (top right) and drop the files in. Add any months — duplicates are ignored.</p></div></div>
+    <div class="step"><span class="n">3</span><div><b>Or make it automatic</b><p>Connect the Gmail feed in Import to pull CIBC alert emails on their own.</p></div></div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:center">
+    <button class="btn primary" id="emptyImport">Import statements</button>
+    <button class="btn" id="emptySample">Load sample data</button>
+  </div>`;
+}
+
+/* ================= render & wiring ================= */
+function renderRail(){
+  const rail=document.getElementById('rail');
+  const ms=monthsAvailable();
+  if(!ms.length){ rail.innerHTML=''; return; }
+  const chips=[`<button class="chip ${MONTH==='all'?'on':''}" data-m="all">ALL</button>`]
+    .concat(ms.map(m=>{const lbl=new Date(m+'-15T00:00').toLocaleDateString('en-CA',{month:'short'}).toUpperCase();
+      return `<button class="chip ${MONTH===m?'on':''}" data-m="${m}">${lbl} ’${m.slice(2,4)}</button>`;}));
+  rail.innerHTML=chips.join('');
+  rail.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{MONTH=c.dataset.m;render();});
+}
+function render(){
+  renderRail();
+  if(!TX.length && TAB!=='recurring'){ view.innerHTML=vEmpty(); wire(); return; }
+  view.innerHTML = TAB==='home'?vHome():TAB==='where'?vWhere():TAB==='goingout'?vGoingOut():TAB==='recurring'?vRecurring():TAB==='trips'?vTrips():vHeads();
+  wire();
+}
+function wire(){
+  view.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{SUB=b.dataset.sub;render();});
+  const ec=document.getElementById('expcsv'); if(ec) ec.onclick=exportSheet;
+  const tf=document.getElementById('txfilter'); if(tf) tf.addEventListener('input',e=>{
+    FILTER=e.target.value; const l=document.getElementById('txlist'); if(l){ l.innerHTML=buildTxRows(); wireTxSelects(); }
+  });
+  wireTxSelects();
+  view.querySelectorAll('.cat[data-cat]').forEach(el=>el.onclick=e=>{
+    if(e.target.closest('input')) return;
+    const c=el.dataset.cat; drillOpen[c]=!drillOpen[c]; render();
+  });
+  view.querySelectorAll('input[data-bud]').forEach(inp=>{
+    inp.addEventListener('change',e=>{ const c=e.target.dataset.bud, v=toNum(e.target.value); if(v>0) BUDGETS[c]=v; else delete BUDGETS[c]; saveBud(); render(); });
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') e.target.blur(); });
+  });
+  const gw=document.getElementById('goWhere'); if(gw) gw.onclick=()=>{TAB='where';setTab();render();};
+  const gh=document.getElementById('goHeads'); if(gh) gh.onclick=()=>{TAB='heads';setTab();render();};
+  const inc=document.getElementById('setIncome'); if(inc) inc.addEventListener('change',e=>{SETTINGS.income=toNum(e.target.value);saveSet();render();});
+  const sav=document.getElementById('setSavings'); if(sav) sav.addEventListener('change',e=>{SETTINGS.savings=toNum(e.target.value);saveSet();render();});
+  const ab=document.getElementById('addBill'); if(ab) ab.onclick=()=>{
+    const n=document.getElementById('bn').value.trim(), a=toNum(document.getElementById('ba').value);
+    if(!n||!a) return; BILLS.push({name:n,amt:a,cad:document.getElementById('bcad').value,cat:document.getElementById('bcat').value});
+    saveBills(); render(); toast('Bill added');
+  };
+  view.querySelectorAll('[data-del]').forEach(el=>el.onclick=()=>{BILLS.splice(+el.dataset.del,1);saveBills();render();});
+  const at=document.getElementById('addTrip'); if(at) at.onclick=()=>{
+    const n=document.getElementById('tn').value.trim(), f=document.getElementById('tf').value, t=document.getElementById('tt').value;
+    if(!n||!f||!t||f>t) return; TRIPS.push({name:n,from:f,to:t}); saveTrips(); render(); toast('Trip added');
+  };
+  view.querySelectorAll('[data-deltrip]').forEach(el=>el.onclick=()=>{TRIPS.splice(+el.dataset.deltrip,1);saveTrips();render();});
+  const ei=document.getElementById('emptyImport'); if(ei) ei.onclick=openDlg;
+  const es=document.getElementById('emptySample'); if(es) es.onclick=()=>{const n=addTxs(SAMPLE);render();toast(`Loaded ${n} sample transactions`);};
+}
+function setTab(){ document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.t===TAB)); }
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.t;setTab();render();window.scrollTo({top:0});});
+
+/* toast */
+let toastT;
+function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),2200); }
+
+/* import dialog */
+const dlg=document.getElementById('dlg');
+function openDlg(){ dlg.showModal(); }
+document.getElementById('openImport').onclick=openDlg;
+document.getElementById('closeDlg').onclick=()=>dlg.close();
+dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.close(); });
+document.getElementById('sampleBtn').onclick=()=>{ const n=addTxs(SAMPLE); dlg.close(); render(); toast(`Loaded ${n} sample transactions`); };
+document.getElementById('resetBtn').onclick=()=>{ if(confirm('Wipe all transactions, budgets and trips? Bills stay.')){ TX=[];TRIPS=[];BUDGETS={};saveTX();saveTrips();saveBud();drillOpen={};MONTH='all';dlg.close();render();toast('All data cleared'); } };
+
+/* file drop */
+const drop=document.getElementById('drop'), fileInput=document.getElementById('file');
+drop.onclick=()=>fileInput.click();
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('hover');}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('hover');}));
+drop.addEventListener('drop',ev=>handleFiles(ev.dataTransfer.files));
+fileInput.addEventListener('change',ev=>handleFiles(ev.target.files));
+function handleFiles(files){
+  let pending=files.length, total=0, skipped=0;
+  if(!pending) return;
+  [...files].forEach(f=>{ const r=new FileReader(); r.onload=()=>{ const {txs,skipped:sk}=parseCSV(r.result); total+=addTxs(txs); skipped+=sk;
+    if(--pending===0){ drillOpen={}; MONTH='all'; dlg.close(); render(); toast(total?`Imported ${total} new transactions`:'Nothing new — already imported'); } }; r.readAsText(f); });
+}
+
+/* gmail feed */
+const feedInput=document.getElementById('feedUrl'), syncBtn=document.getElementById('syncBtn'), feedStat=document.getElementById('feedStat');
+feedInput.value=SETTINGS.feed||'';
+feedInput.addEventListener('change',()=>{SETTINGS.feed=feedInput.value.trim();saveSet();});
+async function syncFeed(auto){
+  const url=(SETTINGS.feed||'').trim();
+  if(!url){ if(!auto) feedStat.textContent='Paste your feed URL first.'; return; }
+  feedStat.textContent='Syncing…';
+  try{
+    const r=await fetch(url); const j=await r.json();
+    if(j.error){ feedStat.textContent='Feed error: '+j.error; return; }
+    const list=(j.txs||[]).filter(t=>t.date&&t.amt>0).map(t=>({date:t.date,desc:String(t.desc||'(alert)'),amt:+t.amt,dir:t.dir==='in'?'in':'out'}));
+    const added=addTxs(list);
+    feedStat.textContent=added?`Added ${added} new from Gmail.`:'Up to date.';
+    if(added){ render(); toast(`+${added} from Gmail`); }
+  }catch(e){ feedStat.textContent='Couldn\u2019t reach the feed — check the URL.'; }
+}
+syncBtn.onclick=()=>syncFeed(false);
+if(SETTINGS.feed) syncFeed(true);
+
+/* sample data — a real slice of the statements */
+const SAMPLE=[
+ {date:'2026-01-09',desc:'LES TROIS MONKEYS MONTREAL QC',amt:32.49,dir:'out'},
+ {date:'2026-01-10',desc:'UBER CANADA/UBEREATS TORONTO ON',amt:22.83,dir:'out'},
+ {date:'2026-01-13',desc:'Q METRO ETS 2416 MONTREAL QC',amt:170.40,dir:'out'},
+ {date:'2026-01-14',desc:'Spotify Stockholm',amt:24.13,dir:'out'},
+ {date:'2026-01-16',desc:'SUSHI HIDDEN FISH MONTREAL QC',amt:135.63,dir:'out'},
+ {date:'2026-01-20',desc:'Amazon.ca Prime Member',amt:5.74,dir:'out'},
+ {date:'2026-01-23',desc:'BELL MOBILITY VERDUN QC',amt:262.35,dir:'out'},
+ {date:'2026-01-25',desc:'Q IC* INSTACART HALIFAX',amt:116.42,dir:'out'},
+ {date:'2026-01-31',desc:'SAQ23001 STE-CATHERINE O MONTREAL QC',amt:41.50,dir:'out'},
+ {date:'2026-01-15',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
+ {date:'2026-01-22',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
+ {date:'2026-01-29',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
+ {date:'2026-02-08',desc:'Q IC* COSTCO BY INSTACART HALIFAX',amt:282.61,dir:'out'},
+ {date:'2026-02-08',desc:'TIXR.COM* STEREOBAR DOLLARD',amt:60.00,dir:'out'},
+ {date:'2026-02-11',desc:'PHARMAPRIX 42 MONTREAL QC',amt:81.03,dir:'out'},
+ {date:'2026-02-14',desc:'Spotify Stockholm',amt:24.13,dir:'out'},
+ {date:'2026-02-23',desc:'Q AIR CAN* AIRCANADA.COM',amt:218.83,dir:'out'},
+ {date:'2026-02-27',desc:'AMZN Mktp CA 866-216-1072 ON',amt:165.45,dir:'out'},
+ {date:'2026-02-13',desc:'LYFT *RIDE FRI 10AM',amt:15.44,dir:'out'},
+ {date:'2026-02-12',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
+ {date:'2026-02-19',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
+ {date:'2026-03-06',desc:'TST* MAMAN - LEXINGTON NEW YORK NY',amt:31.40,dir:'out'},
+ {date:'2026-03-07',desc:'TST* LE BAIN NEW YORK NY',amt:56.95,dir:'out'},
+ {date:'2026-03-07',desc:'SQ *SPEED FIX MOBILE NEW YORK NY',amt:149.66,dir:'out'},
+ {date:'2026-03-14',desc:'Spotify Stockholm',amt:24.13,dir:'out'},
+ {date:'2026-03-22',desc:'MANGA BISTRO MONTREAL QC',amt:58.48,dir:'out'},
+ {date:'2026-03-26',desc:'CLAUDE.AI SUBSCRIPTION ANTHROPIC.COM',amt:32.19,dir:'out'},
+ {date:'2026-03-13',desc:'Q IC* INSTACART HALIFAX',amt:184.09,dir:'out'},
+ {date:'2026-03-29',desc:"MCLEAN'S PUBLIC HOUSE MONTREAL QC",amt:58.19,dir:'out'},
+ {date:'2026-03-12',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
+ {date:'2026-03-19',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
+ {date:'2026-04-01',desc:'CHEXY RENT TORONTO ON',amt:1729.75,dir:'out'},
+ {date:'2026-04-18',desc:'RESTAURANT PANGEA MONTREAL QC',amt:73.14,dir:'out'},
+ {date:'2026-04-19',desc:'RESTAURANT BAYRUT MONTREAL QC',amt:68.00,dir:'out'},
+ {date:'2026-04-22',desc:'BELL MOBILITY VERDUN QC',amt:356.26,dir:'out'},
+ {date:'2026-04-22',desc:'PREAUTHORIZED DEBIT BELL MOBILITY',amt:356.26,dir:'out'},
+ {date:'2026-04-28',desc:'CLAUDE.AI SUBSCRIPTION ANTHROPIC.COM',amt:130.34,dir:'out'},
+ {date:'2026-04-20',desc:'Q IC* COSTCO BY INSTACART HALIFAX',amt:257.50,dir:'out'},
+ {date:'2026-04-09',desc:'PAY Flex Depot',amt:943.64,dir:'in'},
+ {date:'2026-04-16',desc:'PAY Flex Depot',amt:943.64,dir:'in'},
+ {date:'2026-04-23',desc:'PAY Flex Depot',amt:943.64,dir:'in'},
+ {date:'2026-05-02',desc:'UBER CANADA/UBEREATS TORONTO ON',amt:195.70,dir:'out'},
+ {date:'2026-05-13',desc:'Q IC* COSTCO BY INSTACART HALIFAX',amt:375.12,dir:'out'},
+ {date:'2026-05-22',desc:'SQ *THIS IS HOUSE Ottawa ON',amt:38.97,dir:'out'},
+ {date:'2026-05-28',desc:'CLAUDE.AI SUBSCRIPTION ANTHROPIC.COM',amt:160.97,dir:'out'},
+ {date:'2026-05-07',desc:'#534 SPORTS EXPERTS MONTREAL QC',amt:171.28,dir:'out'},
+ {date:'2026-05-31',desc:'TST-Melrose on Adelaid Toronto ON',amt:81.36,dir:'out'},
+ {date:'2026-05-07',desc:'PAY Flex Depot',amt:936.12,dir:'in'},
+ {date:'2026-05-14',desc:'PAY Flex Depot',amt:936.12,dir:'in'},
+ {date:'2026-05-21',desc:'PAY Flex Depot',amt:936.12,dir:'in'},
+ {date:'2026-06-06',desc:'REGULAR PURCHASES INTEREST',amt:93.87,dir:'out'},
+ {date:'2026-01-10',desc:'TIM HORTONS #2654 MONTREAL QC',amt:2.22,dir:'out'},
+ {date:'2026-02-16',desc:'TIM HORTONS MONTREAL QC',amt:4.60,dir:'out'},
+ {date:'2026-03-15',desc:'TIM HORTONS #4290 MONTREAL QC',amt:2.22,dir:'out'},
+ {date:'2026-04-11',desc:'TIM HORTONS #6851 MONTREAL QC',amt:12.51,dir:'out'},
+ {date:'2026-05-15',desc:'TIM HORTONS #1145 MONTREAL QC',amt:6.00,dir:'out'},
+ {date:'2026-04-30',desc:'Q SHELL C06138 ST LAURENT QC',amt:78.23,dir:'out'},
+ {date:'2026-05-31',desc:'Q PETRO-CANADA 30586 BRIGHTON ON',amt:69.80,dir:'out'},
+ {date:'2026-03-15',desc:'COMMUNAUTO QC Montreal QC',amt:16.75,dir:'out'},
+ {date:'2026-01-08',desc:'STM LUCIEN-L ALLIER MONTREAL QC',amt:3.75,dir:'out'},
+];
+
+setTab(); render();
+</script>
+</body>
+</html>
