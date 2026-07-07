@@ -546,7 +546,9 @@ function vHome(){
   const avg=series.length?series.reduce((s,x)=>s+x.spend,0)/series.length:0;
   // current-month figures for hero + on-track
   const curKey=(MONTH==='all')?(series.length?series[series.length-1].key:null):MONTH;
-  const curSpend=curKey?((series.find(s=>s.key===curKey)||{spend:out}).spend):out;
+  const heroRow=series.find(s=>s.key===curKey)||{spend:out,income:inc};
+  const curSpend=curKey?heroRow.spend:out;   // hero = the focus month only, so all 3 numbers agree
+  const heroIn=curKey?heroRow.income:inc;
   const left=safe-curSpend;
   // on-track projection only when the selected month is the latest (current) month
   const isLatest=curKey && series.length && curKey===series[series.length-1].key;
@@ -560,9 +562,9 @@ function vHome(){
   const needed=neededPerMonth();
   return `
   <div class="receipt">
-    <div class="eyebrow">${MONTH==='all'?'This month · safe to spend':monthName(MONTH)+' · safe to spend'}</div>
-    <div class="line"><span>Money in</span><b class="mono">${CAD(inc)}</b></div>
-    <div class="line"><span>Money out</span><b class="mono">${CAD(out)}</b></div>
+    <div class="eyebrow">${curKey?monthName(curKey):'All months'} · safe to spend</div>
+    <div class="line"><span>Money in</span><b class="mono">${CAD(heroIn)}</b></div>
+    <div class="line"><span>Money out</span><b class="mono">${CAD(curSpend)}</b></div>
     <hr class="tear">
     <div class="total"><span class="lbl">${left>=0?'Left to spend':'Over your plan by'}</span>
       <span class="big mono ${left>=0?'pos':'neg'}">${CAD(Math.abs(left))}</span></div>
@@ -613,7 +615,7 @@ function vIncome(){
       <span class="big mono pos">${CAD(MONTH==='all'?grandIn:totalIn)}</span></div>
   </div>
   <div class="card">
-    <div class="chead"><h2>What comes in, by month</h2><span class="cap">tap a bar · green = money in</span></div>
+    <div class="chead"><h2>What comes in, by month</h2><span class="cap">tap a bar</span></div>
     ${chartBars(series,{selected:MONTH!=='all'?MONTH:null,metric:'received',metricPlural:'income'})}
   </div>
   <div class="card">
