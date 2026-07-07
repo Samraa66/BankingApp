@@ -625,6 +625,24 @@ function vIncome(){
     <div class="flag"><div class="ft">Is anything missing?</div><div class="fb">If you earn from sources that don't hit your CIBC chequing (e.g. <b>Mercor</b>), they won't show here. This view only sees deposits in your imported data.</div></div>
   </div>`;
 }
+function vSortRest(){
+  const groups={};
+  for(const t of spendF()){ if(catOf(t)!=='Other') continue; const tok=merchantToken(t.desc);
+    groups[tok]=groups[tok]||{total:0,n:0,desc:t.desc}; groups[tok].total+=t.amt; groups[tok].n++; }
+  const rows=Object.entries(groups).sort((a,b)=>b[1].total-a[1].total).slice(0,12);
+  if(!rows.length) return '';
+  const cats=Object.keys(CAT_COLORS).filter(c=>c!=='Other');
+  const total=rows.reduce((s,[,v])=>s+v.total,0);
+  return `<div class="card">
+    <div class="chead"><h2>Sort the rest</h2><span class="cap">${CAD(total)} uncategorized</span></div>
+    <p class="cap" style="margin:0 0 8px">Pick a bucket for each — it sticks for every charge from that place, past and future.</p>
+    ${rows.map(([tok,v])=>`<div class="txrow"><span class="dot" style="background:#93A096"></span>
+      <div class="txl"><b>${tok}</b><span class="txd">${v.n}× · ${v.desc.slice(0,38)}</span></div>
+      <select class="catsel" data-tok="${encodeURIComponent(tok)}" aria-label="Category for ${tok}">
+        <option value="" selected>choose…</option>${cats.map(c=>`<option>${c}</option>`).join('')}</select>
+      <span class="txa mono">${CAD(v.total)}</span></div>`).join('')}
+  </div>`;
+}
 function vWhere(){
   const seg=`<div class="subseg">
     <button class="sub ${SUB==='cats'?'on':''}" data-sub="cats">Categories</button>
@@ -634,7 +652,7 @@ function vWhere(){
   if(SUB==='tx') return seg+vTx();
   const out=sumOutF(), cats=byCategoryF(), span=spanF();
   const sorted=Object.entries(cats).sort((a,b)=>b[1].total-a[1].total);
-  return seg+`<div class="card">
+  return seg+vSortRest()+`<div class="card">
     <div class="chead"><h2>Where every dollar went</h2><span class="cap">${scopeLabel()}</span></div>
     <p class="cap" style="margin-bottom:10px">${CAD(out)} out · tap a category for places · set monthly budgets</p>
     ${sorted.map(([c,d])=>catRow(c,d,out,{budget:true,span})).join('')||'<div class="empty">No spending in this period.</div>'}
@@ -700,7 +718,7 @@ function exportSheet(){
   toast('Sheet downloaded');
 }
 function wireTxSelects(){
-  view.querySelectorAll('.catsel').forEach(sel=>sel.onchange=()=>{
+  view.querySelectorAll('.catsel[data-i]').forEach(sel=>sel.onchange=()=>{
     const t=TXVIEW[+sel.dataset.i]; if(!t) return;
     const k=txKey(t), auto=categorize(t.desc).c, v=sel.value;
     if(v===auto) delete OVR[k]; else OVR[k]=v;
@@ -881,6 +899,10 @@ function wire(){
     b.onclick=go; b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};
   });
   view.querySelectorAll('[data-sub]').forEach(b=>b.onclick=()=>{SUB=b.dataset.sub;render();});
+  view.querySelectorAll('.catsel[data-tok]').forEach(sel=>sel.onchange=()=>{
+    const tok=decodeURIComponent(sel.dataset.tok), v=sel.value; if(!v) return;
+    RULESU[tok]=v; saveRules(); toast(`“${tok}” → ${v}`); render();
+  });
   const ec=document.getElementById('expcsv'); if(ec) ec.onclick=exportSheet;
   const tf=document.getElementById('txfilter'); if(tf) tf.addEventListener('input',e=>{
     FILTER=e.target.value; const l=document.getElementById('txlist'); if(l){ l.innerHTML=buildTxRows(); wireTxSelects(); }
