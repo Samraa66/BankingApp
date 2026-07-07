@@ -520,34 +520,68 @@ function chartBars(series, opts){
     ${bars}</svg>`;
 }
 
+function monthlySpendSeries(){
+  const ms=monthsAvailable().slice().reverse();
+  const sp={}, ic={};
+  for(const t of spendAll()) sp[t.date.slice(0,7)]=(sp[t.date.slice(0,7)]||0)+t.amt;
+  for(const t of incomeAll()) ic[t.date.slice(0,7)]=(ic[t.date.slice(0,7)]||0)+t.amt;
+  return ms.map(m=>({key:m,label:new Date(m+'-15T00:00').toLocaleDateString('en-CA',{month:'short'}),
+    spend:sp[m]||0, income:ic[m]||0}));
+}
+function neededPerMonth(){
+  const bm=billMonthly();
+  const rec=detectRecurring().reduce((s,r)=>s+r.perMonth,0);
+  // typical discretionary = median monthly spend minus committed, floored at 0
+  const series=monthlySpendSeries().map(s=>s.spend).sort((a,b)=>a-b);
+  const med=series.length?series[Math.floor(series.length/2)]:0;
+  const disc=Math.max(0, med-bm-rec);
+  return bm+rec+disc;
+}
 function vHome(){
-  const out=sumOutF(), inc=sumInF(), kept=inc-out;
+  const out=sumOutF(), inc=sumInF();
   const cats=byCategoryF();
   const sorted=Object.entries(cats).sort((a,b)=>b[1].total-a[1].total);
-  const go=sorted.filter(([c])=>GOING_OUT.has(c)).reduce((s,[,d])=>s+d.total,0);
   const bm=billMonthly(), safe=SETTINGS.income-bm-SETTINGS.savings;
-  const perMo=out/spanF();
-  const eyebrow=MONTH==='all'?'All months · ledger':monthName(MONTH)+' · ledger';
+  const series=monthlySpendSeries();
+  const avg=series.length?series.reduce((s,x)=>s+x.spend,0)/series.length:0;
+  // current-month figures for hero + on-track
+  const curKey=(MONTH==='all')?(series.length?series[series.length-1].key:null):MONTH;
+  const curSpend=curKey?((series.find(s=>s.key===curKey)||{spend:out}).spend):out;
+  const left=safe-curSpend;
+  // on-track projection only when the selected month is the latest (current) month
+  const isLatest=curKey && series.length && curKey===series[series.length-1].key;
+  const d=curKey?new Date(curKey+'-15T00:00'):new Date();
+  const dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+  const dayNow=(MONTH==='all')?dim:Math.min(dim, new Date().getDate());
+  const proj=isLatest && dayNow>0 ? curSpend/dayNow*dim : null;
+  const diffPct=avg?Math.round((curSpend-avg)/avg*100):0;
+  const go=sorted.filter(([c])=>GOING_OUT.has(c)).reduce((s,[,d])=>s+d.total,0);
   const flags=headsFlagsCount();
+  const needed=neededPerMonth();
   return `
   <div class="receipt">
-    <div class="eyebrow">${eyebrow}</div>
+    <div class="eyebrow">${MONTH==='all'?'This month · safe to spend':monthName(MONTH)+' · safe to spend'}</div>
     <div class="line"><span>Money in</span><b class="mono">${CAD(inc)}</b></div>
     <div class="line"><span>Money out</span><b class="mono">${CAD(out)}</b></div>
     <hr class="tear">
-    <div class="total"><span class="lbl">${kept>=0?'Kept':'Overspent'}</span>
-      <span class="big mono ${kept>=0?'pos':'neg'}">${CAD(Math.abs(kept))}</span></div>
-    <div class="plan">Plan: <b class="mono">${CAD(safe)}</b>/mo safe after bills &amp; savings — you're averaging <b class="mono">${CAD(perMo)}</b>/mo${perMo>safe?' · over plan':''}</div>
+    <div class="total"><span class="lbl">${left>=0?'Left to spend':'Over your plan by'}</span>
+      <span class="big mono ${left>=0?'pos':'neg'}">${CAD(Math.abs(left))}</span></div>
+    <div class="plan">Plan: <b class="mono">${CAD(safe)}</b>/mo after bills &amp; savings${proj!=null?` · at this pace you'll reach <b class="mono">${CAD(proj)}</b> by month-end`:''}</div>
+  </div>
+  <div class="card">
+    <div class="chead"><h2>Which months you spend more</h2><span class="cap">tap a bar · green = money in</span></div>
+    ${chartBars(series,{selected:MONTH!=='all'?MONTH:(curKey||null)})}
+    <p class="cap" style="margin:8px 0 0">${avg?`${MONTH==='all'?'Latest month':monthName(MONTH)} spend <b>${CAD(curSpend)}</b> — ${diffPct===0?'right at':Math.abs(diffPct)+'% '+(diffPct>0?'above':'below')} your ${series.length}-month average of <b>${CAD(avg)}</b>.`:'Load a few months to see your trend.'}</p>
   </div>
   <div class="strip">
     <div class="stat"><div class="k">Going out</div><div class="v mono">${CAD(go)}</div></div>
-    <div class="stat"><div class="k">Share of spend</div><div class="v mono">${out?Math.round(go/out*100):0}%</div></div>
     <div class="stat"><div class="k">Bills / mo</div><div class="v mono">${CAD(bm)}</div></div>
+    <div class="stat"><div class="k">Needed / mo</div><div class="v mono">${CAD(needed)}</div></div>
   </div>
   ${flags?`<div class="card" style="cursor:pointer" id="goHeads"><div class="chead" style="margin:0"><h2>⚠ ${flags} thing${flags>1?'s':''} worth a look</h2><span class="link">Review →</span></div></div>`:''}
   <div class="card">
     <div class="chead"><h2>Top spending</h2><button class="link" id="goWhere">All categories →</button></div>
-    ${sorted.slice(0,5).map(([c,d])=>catRow(c,d,out,{max:4})).join('')||'<div class="empty">No spending in this period.</div>'}
+    ${sorted.slice(0,5).map(([c,dd])=>catRow(c,dd,out,{max:4})).join('')||'<div class="empty">No spending in this period.</div>'}
   </div>
   <div class="card">
     <div class="chead"><h2>Monthly plan</h2><span class="cap">saved automatically</span></div>
