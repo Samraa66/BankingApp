@@ -363,9 +363,13 @@ function special(desc){
 }
 function incomeSource(desc){
   const u=upper(desc);
-  if(u.includes('FLEX DEPOT')||u.includes('PAYROLL')||u.startsWith('PAY ')) return 'Payroll';
-  if(u.includes('SOLIDARITY')||u.includes('SOLIDARITE')||u.includes('CREDIT')||u.includes('CANADA')||u.includes('GST')||u.includes('GOUV')) return 'Government credit';
-  if(u.includes('E-TRANSFER')||u.includes('VIREMENT')||u.includes('DEPOSIT')) return 'E-transfer in';
+  // Mercor contractor pay posts as "CREDIT MEMO … MERCOR.IO CORPORATION" — must match before the
+  // government rule (which no longer keys on the bare word CREDIT, since gov also posts as CREDIT MEMO).
+  if(u.includes('MERCOR')) return 'Mercor';
+  if(u.includes('FLEX DEPOT')||u.includes('PAYROLL')||u.startsWith('PAY ')) return 'Flex (payroll)';
+  if(u.includes('SOLIDARITE')||u.includes('SOLIDARITY')||u.includes('GOUV')||u.includes('GST')||u.includes('CANADA')||u.includes('VERS.ANTI')) return 'Government';
+  if(u.includes('E-TRANSFER')||u.includes('VIREMENT')) return 'E-transfer in';
+  if(u.includes('DEPOSIT')||u.includes('CREDIT MEMO')) return 'Other deposit';
   return 'Other';
 }
 
@@ -701,7 +705,7 @@ function vIncome(){
   </div>
   <div class="card">
     <div class="chead"><h2>Heads up</h2></div>
-    <div class="flag"><div class="ft">Is anything missing?</div><div class="fb">If you earn from sources that don't hit your CIBC chequing (e.g. <b>Mercor</b>), they won't show here. This view only sees deposits in your imported data.</div></div>
+    <div class="flag"><div class="ft">Is anything missing?</div><div class="fb"><b>Mercor</b> (contractor pay) and <b>Flex</b> payroll are tracked from your chequing deposits. Income that never lands in this CIBC chequing — cash, or money sent to your other bank — won't show here.</div></div>
   </div>`;
 }
 function vSortRest(){
