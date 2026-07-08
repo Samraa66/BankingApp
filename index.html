@@ -344,6 +344,15 @@ function categorize(desc){
   for(const [kw,m,c] of RULES){ for(const k of kw){ if(u.includes(k)) return {m,c}; } }
   return {m:(desc||'Other').replace(/\s+/g,' ').trim().slice(0,28),c:'Other'};
 }
+// CIBC Visa statement categories → our categories, used only as a fallback seed on import.
+const CIBC_CAT_MAP={'restaurants':'Dining','transportation':'Transit','retail and grocery':'Groceries','health and education':'Health','hotel, entertainment and recreation':'Entertainment'};
+function seedCat(row){
+  if(!row.cat) return;
+  if(categorize(row.desc).c!=='Other'){ delete row.cat; return; } // app already knows this merchant
+  const mapped=CIBC_CAT_MAP[row.cat.toLowerCase()];
+  if(mapped) OVR[txKey(row)]=mapped;
+  delete row.cat;
+}
 function special(desc){
   const u=upper(desc);
   if(u.includes('TDC LANDLORD')||u.includes('CHEXY')) return null;
@@ -380,8 +389,29 @@ function parseDate(s){
 const isNum=s=>/^-?\$?\s*[\d,]+\.?\d*$/.test((s||'').replace(/\s/g,'')) && /\d/.test(s||'');
 const toNum=s=>parseFloat((s||'').replace(/[^0-9.\-]/g,''))||0;
 const isCard=s=>/x{2,}/i.test(s||'')||/\d{12,}/.test((s||'').replace(/\D/g,''));
+// Deterministic path for our canonical export: date,description,amount,direction,account,category
+function parseCanonical(rows){
+  const txs=[]; let skipped=0;
+  for(let i=1;i<rows.length;i++){
+    const c=splitCSV(rows[i]);
+    if(c.length<4){skipped++;continue;}
+    const date=parseDate(c[0]); if(!date){skipped++;continue;}
+    const desc=(c[1]||'').trim()||'(no description)';
+    const amt=Math.abs(toNum(c[2]));
+    if(!(amt>0)){skipped++;continue;}
+    const dir=(c[3]||'').trim().toLowerCase()==='in'?'in':'out';
+    const acct=(c[4]||'').trim().toLowerCase();
+    const cat=(c[5]||'').trim();
+    const row={date,desc,amt,dir};
+    if(acct) row.acct=acct;
+    if(cat) row.cat=cat;
+    txs.push(row);
+  }
+  return {txs,skipped};
+}
 function parseCSV(text){
   const rows=text.split(/\r?\n/).filter(r=>r.trim().length);
+  if(rows.length && rows[0].replace(/\s/g,'').toLowerCase().startsWith('date,description,amount,direction')) return parseCanonical(rows);
   const txs=[]; let skipped=0;
   for(const raw of rows){
     const cells=splitCSV(raw);
@@ -459,7 +489,7 @@ function addTxs(list, acct){
   const byKey = acct ? new Map(TX.map(t=>[txKey(t),t])) : null;
   const added=[];
   for(const t of list){ const k=txKey(t);
-    if(!have.has(k)){ const row=acct?{...t,acct}:t; TX.push(row); have.add(k); added.push(row); }
+    if(!have.has(k)){ const a=t.acct||acct; const row=a?{...t,acct:a}:t; TX.push(row); have.add(k); added.push(row); }
     else if(byKey){ const ex=byKey.get(k); if(ex && acctOf(ex)==='unknown') ex.acct=acct; }
   }
   saveTX(); return added;
@@ -1004,8 +1034,10 @@ function handleFiles(files){
   [...files].forEach(f=>{ const r=new FileReader(); r.onload=()=>{
     const {txs,skipped:sk}=parseCSV(r.result); skipped+=sk;
     const acct = choice==='auto' ? guessAcct(txs) : choice;   // per-file guess when auto
-    addedAll.push(...addTxs(txs, acct));
-    if(--pending===0) finishImport(addedAll, skipped);
+    const added=addTxs(txs, acct);
+    added.forEach(seedCat);                                   // fallback-only Visa category seeding
+    addedAll.push(...added);
+    if(--pending===0){ saveTX(); saveOvr(); finishImport(addedAll, skipped); }
   }; r.readAsText(f); });
 }
 // Show a real gap report instead of a vague count — what the CSVs had that the feed didn't.
