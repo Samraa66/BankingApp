@@ -641,16 +641,30 @@ function vHome(){
   const go=sorted.filter(([c])=>GOING_OUT.has(c)).reduce((s,[,d])=>s+d.total,0);
   const flags=headsFlagsCount();
   const needed=neededPerMonth();
-  return `
+  // ALL scope: the safe-to-spend math is per-month, so instead of pinning the hero to the latest
+  // month we show all-months totals (Money in/out) with Net. A single month keeps safe-to-spend.
+  const netAll=inc-out, span=monthsSpanAll();
+  const receiptCard = (MONTH==='all') ? `
   <div class="receipt">
-    <div class="eyebrow">${curKey?monthName(curKey):'All months'} · safe to spend</div>
+    <div class="eyebrow">${scopeLabel()} · total</div>
+    <div class="line"><span>Money in</span><b class="mono">${CAD(inc)}</b></div>
+    <div class="line"><span>Money out</span><b class="mono">${CAD(out)}</b></div>
+    <hr class="tear">
+    <div class="total"><span class="lbl">Net · all months</span>
+      <span class="big mono ${netAll>=0?'pos':'neg'}">${netAll>=0?'+':''}${CAD(netAll)}</span></div>
+    <div class="plan">≈ <b class="mono">${CAD(inc/span)}</b> in · <b class="mono">${CAD(out/span)}</b> out per month · ${span} months</div>
+  </div>` : `
+  <div class="receipt">
+    <div class="eyebrow">${monthName(curKey)} · safe to spend</div>
     <div class="line"><span>Money in</span><b class="mono">${CAD(heroIn)}</b></div>
     <div class="line"><span>Money out</span><b class="mono">${CAD(curSpend)}</b></div>
     <hr class="tear">
     <div class="total"><span class="lbl">${left>=0?'Left to spend':'Over your plan by'}</span>
       <span class="big mono ${left>=0?'pos':'neg'}">${CAD(Math.abs(left))}</span></div>
     <div class="plan">Plan: <b class="mono">${CAD(safe)}</b>/mo after bills &amp; savings${proj!=null?` · at this pace you'll reach <b class="mono">${CAD(proj)}</b> by month-end`:''}</div>
-  </div>
+  </div>`;
+  return `
+  ${receiptCard}
   <div class="card">
     <div class="chead"><h2>Which months you spend more</h2><span class="cap">tap a bar · green = money in</span></div>
     ${chartBars(series,{selected:MONTH!=='all'?MONTH:(curKey||null)})}
