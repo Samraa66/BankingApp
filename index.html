@@ -505,9 +505,18 @@ const inMonth=t=>MONTH==='all'||t.date.slice(0,7)===MONTH;
 function acctMatch(t){ return ACCT==='all' || acctOf(t)===ACCT; }
 function acctsPresent(){ return [...new Set(TX.map(acctOf))]; }
 function spendAll(){ return TX.filter(t=>t.dir==='out' && !special(t.desc) && acctMatch(t)); }
-// Credit-card inflows are never income: card payments (special→cardpay) are transfers, and
-// returns/credits are spending reversals (see refundAll, which nets them against spend).
-function incomeAll(){ return TX.filter(t=>t.dir==='in' && !special(t.desc) && acctOf(t)!=='credit' && acctMatch(t)); }
+// An incoming deposit that is NOT real income — money the user moved, not earned:
+// card payments, transfers to/from own card, and e-transfers from the user's OWN other bank
+// (their name). Incoming e-transfers from other people DO count as income.
+function isTransferIn(t){
+  const u=upper(t.desc);
+  if(u.includes('PAYMENT THANK YOU')||u.includes('PAIEMENT MERCI')) return true; // card payment
+  if(u.includes('TO CARD')||u.includes('INTERNET TRANSFER')) return true;         // own-account move
+  if(u.includes('SAMEER KARAM')) return true;                                     // user's other bank
+  return false;
+}
+// Credit-card inflows are never income (payments = transfers, returns net against spend via refundAll).
+function incomeAll(){ return TX.filter(t=>t.dir==='in' && acctOf(t)!=='credit' && !isTransferIn(t) && acctMatch(t)); }
 // Credit-card returns/credits (not card payments) — netted against spend & category, not counted as income.
 function refundAll(){ return TX.filter(t=>t.dir==='in' && acctOf(t)==='credit' && !special(t.desc) && acctMatch(t)); }
 function spendF(){ return spendAll().filter(inMonth); }
