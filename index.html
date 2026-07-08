@@ -505,9 +505,14 @@ const inMonth=t=>MONTH==='all'||t.date.slice(0,7)===MONTH;
 function acctMatch(t){ return ACCT==='all' || acctOf(t)===ACCT; }
 function acctsPresent(){ return [...new Set(TX.map(acctOf))]; }
 function spendAll(){ return TX.filter(t=>t.dir==='out' && !special(t.desc) && acctMatch(t)); }
-function incomeAll(){ return TX.filter(t=>t.dir==='in' && !special(t.desc) && acctMatch(t)); }
+// Credit-card inflows are never income: card payments (special→cardpay) are transfers, and
+// returns/credits are spending reversals (see refundAll, which nets them against spend).
+function incomeAll(){ return TX.filter(t=>t.dir==='in' && !special(t.desc) && acctOf(t)!=='credit' && acctMatch(t)); }
+// Credit-card returns/credits (not card payments) — netted against spend & category, not counted as income.
+function refundAll(){ return TX.filter(t=>t.dir==='in' && acctOf(t)==='credit' && !special(t.desc) && acctMatch(t)); }
 function spendF(){ return spendAll().filter(inMonth); }
 function incomeF(){ return incomeAll().filter(inMonth); }
+function refundF(){ return refundAll().filter(inMonth); }
 function monthsAvailable(){ return [...new Set(TX.map(t=>t.date.slice(0,7)))].sort().reverse(); }
 function monthsSpanAll(){ const ms=monthsAvailable(); return Math.max(1,ms.length); }
 function spanF(){ return MONTH==='all'?monthsSpanAll():1; }
@@ -515,9 +520,12 @@ function byCategoryF(){
   const cats={};
   for(const t of spendF()){ const m=categorize(t.desc).m, c=catOf(t); cats[c]=cats[c]||{total:0,merch:{}}; cats[c].total+=t.amt;
     cats[c].merch[m]=cats[c].merch[m]||{total:0,n:0}; cats[c].merch[m].total+=t.amt; cats[c].merch[m].n++; }
+  // net credit-card refunds back out of their category (a return reduces what you spent there)
+  for(const t of refundF()){ const m=categorize(t.desc).m, c=catOf(t); cats[c]=cats[c]||{total:0,merch:{}}; cats[c].total-=t.amt;
+    cats[c].merch[m]=cats[c].merch[m]||{total:0,n:0}; cats[c].merch[m].total-=t.amt; cats[c].merch[m].n++; }
   return cats;
 }
-const sumOutF=()=>spendF().reduce((s,t)=>s+t.amt,0);
+const sumOutF=()=>spendF().reduce((s,t)=>s+t.amt,0)-refundF().reduce((s,t)=>s+t.amt,0);
 const sumInF=()=>incomeF().reduce((s,t)=>s+t.amt,0);
 const billMonthly=()=>BILLS.reduce((s,b)=>s+(b.cad==='yearly'?b.amt/12:b.cad==='weekly'?b.amt*4.33:b.amt),0);
 
@@ -583,6 +591,7 @@ function monthlySpendSeries(){
   const ms=monthsAvailable().slice().reverse();
   const sp={}, ic={};
   for(const t of spendAll()) sp[t.date.slice(0,7)]=(sp[t.date.slice(0,7)]||0)+t.amt;
+  for(const t of refundAll()) sp[t.date.slice(0,7)]=(sp[t.date.slice(0,7)]||0)-t.amt;   // refunds reduce that month's spend
   for(const t of incomeAll()) ic[t.date.slice(0,7)]=(ic[t.date.slice(0,7)]||0)+t.amt;
   return ms.map(m=>({key:m,label:new Date(m+'-15T00:00').toLocaleDateString('en-CA',{month:'short'}),
     spend:sp[m]||0, income:ic[m]||0}));
