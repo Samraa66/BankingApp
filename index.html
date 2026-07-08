@@ -275,7 +275,6 @@
     <div class="dfoot">
       <button class="btn danger" id="resetBtn">Reset all data</button>
       <div style="display:flex;gap:8px">
-        <button class="btn" id="sampleBtn">Load sample</button>
         <button class="btn primary" id="closeDlg">Done</button>
       </div>
     </div>
@@ -447,7 +446,8 @@ let BILLS = JSON.parse(store.get(KEY_BILLS)|| JSON.stringify([
   {name:'Beneva (insurance)',amt:37,cad:'monthly',cat:'Insurance'},
 ]));
 let BUDGETS = JSON.parse(store.get(KEY_BUD)||'{}');
-let SETTINGS = JSON.parse(store.get(KEY_SET)|| JSON.stringify({income:3890, savings:300}));
+let SETTINGS = JSON.parse(store.get(KEY_SET)|| JSON.stringify({income:null, savings:300}));
+if(SETTINGS.income===3890) SETTINGS.income=null;   // migrate the old hard-coded placeholder → auto-derive from data
 if(!('feed' in SETTINGS)) SETTINGS.feed='';
 let TRIPS = JSON.parse(store.get(KEY_TRIPS)||'[]');
 let OVR = JSON.parse(store.get(KEY_CATOV)||'{}');
@@ -541,6 +541,9 @@ function byCategoryF(){
 const sumOutF=()=>spendF().reduce((s,t)=>s+t.amt,0)-refundF().reduce((s,t)=>s+t.amt,0);
 const sumInF=()=>incomeF().reduce((s,t)=>s+t.amt,0);
 const billMonthly=()=>BILLS.reduce((s,b)=>s+(b.cad==='yearly'?b.amt/12:b.cad==='weekly'?b.amt*4.33:b.amt),0);
+// Plan income: use the user's manual override if they set one, else auto-derive from actual monthly deposits.
+function avgMonthlyIncome(){ const s=monthlySpendSeries(); return s.length? s.reduce((a,x)=>a+x.income,0)/s.length : 0; }
+function planIncome(){ return (SETTINGS.income!=null && SETTINGS.income!=='') ? +SETTINGS.income : avgMonthlyIncome(); }
 
 /* ================= views ================= */
 const view=document.getElementById('view');
@@ -622,7 +625,7 @@ function vHome(){
   const out=sumOutF(), inc=sumInF();
   const cats=byCategoryF();
   const sorted=Object.entries(cats).sort((a,b)=>b[1].total-a[1].total);
-  const bm=billMonthly(), safe=SETTINGS.income-bm-SETTINGS.savings;
+  const bm=billMonthly(), safe=planIncome()-bm-SETTINGS.savings;
   const series=monthlySpendSeries();
   const avg=series.length?series.reduce((s,x)=>s+x.spend,0)/series.length:0;
   // current-month figures for hero + on-track
@@ -682,7 +685,7 @@ function vHome(){
   </div>
   <div class="card">
     <div class="chead"><h2>Monthly plan</h2><span class="cap">saved automatically</span></div>
-    <div class="plan-row"><span class="pl">Take-home income / month</span><input class="pin mono" id="setIncome" value="${SETTINGS.income}" inputmode="decimal"></div>
+    <div class="plan-row"><span class="pl">Take-home income / month</span><input class="pin mono" id="setIncome" value="${SETTINGS.income!=null?SETTINGS.income:''}" placeholder="${Math.round(avgMonthlyIncome())} · auto" inputmode="decimal"></div>
     <div class="plan-row"><span class="pl">Savings goal / month</span><input class="pin mono" id="setSavings" value="${SETTINGS.savings}" inputmode="decimal"></div>
   </div>`;
 }
@@ -969,7 +972,6 @@ function vEmpty(){
   </div>
   <div style="display:flex;gap:8px;justify-content:center">
     <button class="btn primary" id="emptyImport">Import statements</button>
-    <button class="btn" id="emptySample">Load sample data</button>
   </div>`;
 }
 
@@ -1024,7 +1026,7 @@ function wire(){
   });
   const gw=document.getElementById('goWhere'); if(gw) gw.onclick=()=>{TAB='where';setTab();render();};
   const gh=document.getElementById('goHeads'); if(gh) gh.onclick=()=>{TAB='heads';setTab();render();};
-  const inc=document.getElementById('setIncome'); if(inc) inc.addEventListener('change',e=>{SETTINGS.income=toNum(e.target.value);saveSet();render();});
+  const inc=document.getElementById('setIncome'); if(inc) inc.addEventListener('change',e=>{const v=e.target.value.trim();SETTINGS.income=v===''?null:toNum(v);saveSet();render();});
   const sav=document.getElementById('setSavings'); if(sav) sav.addEventListener('change',e=>{SETTINGS.savings=toNum(e.target.value);saveSet();render();});
   const ab=document.getElementById('addBill'); if(ab) ab.onclick=()=>{
     const n=document.getElementById('bn').value.trim(), a=toNum(document.getElementById('ba').value);
@@ -1038,7 +1040,6 @@ function wire(){
   };
   view.querySelectorAll('[data-deltrip]').forEach(el=>el.onclick=()=>{TRIPS.splice(+el.dataset.deltrip,1);saveTrips();render();});
   const ei=document.getElementById('emptyImport'); if(ei) ei.onclick=openDlg;
-  const es=document.getElementById('emptySample'); if(es) es.onclick=()=>{const n=addTxs(SAMPLE).length;render();toast(`Loaded ${n} sample transactions`);};
 }
 function setTab(){ document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.t===TAB)); }
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.t;setTab();render();window.scrollTo({top:0});});
@@ -1053,7 +1054,6 @@ function openDlg(){ dlg.showModal(); }
 document.getElementById('openImport').onclick=openDlg;
 document.getElementById('closeDlg').onclick=()=>dlg.close();
 dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.close(); });
-document.getElementById('sampleBtn').onclick=()=>{ const n=addTxs(SAMPLE).length; dlg.close(); render(); toast(`Loaded ${n} sample transactions`); };
 document.getElementById('resetBtn').onclick=()=>{ if(confirm('Wipe all transactions, budgets and trips? Bills stay.')){ TX=[];TRIPS=[];BUDGETS={};saveTX();saveTrips();saveBud();drillOpen={};MONTH='all';dlg.close();render();toast('All data cleared'); } };
 
 /* file drop */
@@ -1114,69 +1114,6 @@ async function syncFeed(auto){
 syncBtn.onclick=()=>syncFeed(false);
 if(SETTINGS.feed) syncFeed(true);
 
-/* sample data — a real slice of the statements */
-const SAMPLE=[
- {date:'2026-01-09',desc:'LES TROIS MONKEYS MONTREAL QC',amt:32.49,dir:'out'},
- {date:'2026-01-10',desc:'UBER CANADA/UBEREATS TORONTO ON',amt:22.83,dir:'out'},
- {date:'2026-01-13',desc:'Q METRO ETS 2416 MONTREAL QC',amt:170.40,dir:'out'},
- {date:'2026-01-14',desc:'Spotify Stockholm',amt:24.13,dir:'out'},
- {date:'2026-01-16',desc:'SUSHI HIDDEN FISH MONTREAL QC',amt:135.63,dir:'out'},
- {date:'2026-01-20',desc:'Amazon.ca Prime Member',amt:5.74,dir:'out'},
- {date:'2026-01-23',desc:'BELL MOBILITY VERDUN QC',amt:262.35,dir:'out'},
- {date:'2026-01-25',desc:'Q IC* INSTACART HALIFAX',amt:116.42,dir:'out'},
- {date:'2026-01-31',desc:'SAQ23001 STE-CATHERINE O MONTREAL QC',amt:41.50,dir:'out'},
- {date:'2026-01-15',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
- {date:'2026-01-22',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
- {date:'2026-01-29',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
- {date:'2026-02-08',desc:'Q IC* COSTCO BY INSTACART HALIFAX',amt:282.61,dir:'out'},
- {date:'2026-02-08',desc:'TIXR.COM* STEREOBAR DOLLARD',amt:60.00,dir:'out'},
- {date:'2026-02-11',desc:'PHARMAPRIX 42 MONTREAL QC',amt:81.03,dir:'out'},
- {date:'2026-02-14',desc:'Spotify Stockholm',amt:24.13,dir:'out'},
- {date:'2026-02-23',desc:'Q AIR CAN* AIRCANADA.COM',amt:218.83,dir:'out'},
- {date:'2026-02-27',desc:'AMZN Mktp CA 866-216-1072 ON',amt:165.45,dir:'out'},
- {date:'2026-02-13',desc:'LYFT *RIDE FRI 10AM',amt:15.44,dir:'out'},
- {date:'2026-02-12',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
- {date:'2026-02-19',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
- {date:'2026-03-06',desc:'TST* MAMAN - LEXINGTON NEW YORK NY',amt:31.40,dir:'out'},
- {date:'2026-03-07',desc:'TST* LE BAIN NEW YORK NY',amt:56.95,dir:'out'},
- {date:'2026-03-07',desc:'SQ *SPEED FIX MOBILE NEW YORK NY',amt:149.66,dir:'out'},
- {date:'2026-03-14',desc:'Spotify Stockholm',amt:24.13,dir:'out'},
- {date:'2026-03-22',desc:'MANGA BISTRO MONTREAL QC',amt:58.48,dir:'out'},
- {date:'2026-03-26',desc:'CLAUDE.AI SUBSCRIPTION ANTHROPIC.COM',amt:32.19,dir:'out'},
- {date:'2026-03-13',desc:'Q IC* INSTACART HALIFAX',amt:184.09,dir:'out'},
- {date:'2026-03-29',desc:"MCLEAN'S PUBLIC HOUSE MONTREAL QC",amt:58.19,dir:'out'},
- {date:'2026-03-12',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
- {date:'2026-03-19',desc:'PAY Flex Depot',amt:981.34,dir:'in'},
- {date:'2026-04-01',desc:'CHEXY RENT TORONTO ON',amt:1729.75,dir:'out'},
- {date:'2026-04-18',desc:'RESTAURANT PANGEA MONTREAL QC',amt:73.14,dir:'out'},
- {date:'2026-04-19',desc:'RESTAURANT BAYRUT MONTREAL QC',amt:68.00,dir:'out'},
- {date:'2026-04-22',desc:'BELL MOBILITY VERDUN QC',amt:356.26,dir:'out'},
- {date:'2026-04-22',desc:'PREAUTHORIZED DEBIT BELL MOBILITY',amt:356.26,dir:'out'},
- {date:'2026-04-28',desc:'CLAUDE.AI SUBSCRIPTION ANTHROPIC.COM',amt:130.34,dir:'out'},
- {date:'2026-04-20',desc:'Q IC* COSTCO BY INSTACART HALIFAX',amt:257.50,dir:'out'},
- {date:'2026-04-09',desc:'PAY Flex Depot',amt:943.64,dir:'in'},
- {date:'2026-04-16',desc:'PAY Flex Depot',amt:943.64,dir:'in'},
- {date:'2026-04-23',desc:'PAY Flex Depot',amt:943.64,dir:'in'},
- {date:'2026-05-02',desc:'UBER CANADA/UBEREATS TORONTO ON',amt:195.70,dir:'out'},
- {date:'2026-05-13',desc:'Q IC* COSTCO BY INSTACART HALIFAX',amt:375.12,dir:'out'},
- {date:'2026-05-22',desc:'SQ *THIS IS HOUSE Ottawa ON',amt:38.97,dir:'out'},
- {date:'2026-05-28',desc:'CLAUDE.AI SUBSCRIPTION ANTHROPIC.COM',amt:160.97,dir:'out'},
- {date:'2026-05-07',desc:'#534 SPORTS EXPERTS MONTREAL QC',amt:171.28,dir:'out'},
- {date:'2026-05-31',desc:'TST-Melrose on Adelaid Toronto ON',amt:81.36,dir:'out'},
- {date:'2026-05-07',desc:'PAY Flex Depot',amt:936.12,dir:'in'},
- {date:'2026-05-14',desc:'PAY Flex Depot',amt:936.12,dir:'in'},
- {date:'2026-05-21',desc:'PAY Flex Depot',amt:936.12,dir:'in'},
- {date:'2026-06-06',desc:'REGULAR PURCHASES INTEREST',amt:93.87,dir:'out'},
- {date:'2026-01-10',desc:'TIM HORTONS #2654 MONTREAL QC',amt:2.22,dir:'out'},
- {date:'2026-02-16',desc:'TIM HORTONS MONTREAL QC',amt:4.60,dir:'out'},
- {date:'2026-03-15',desc:'TIM HORTONS #4290 MONTREAL QC',amt:2.22,dir:'out'},
- {date:'2026-04-11',desc:'TIM HORTONS #6851 MONTREAL QC',amt:12.51,dir:'out'},
- {date:'2026-05-15',desc:'TIM HORTONS #1145 MONTREAL QC',amt:6.00,dir:'out'},
- {date:'2026-04-30',desc:'Q SHELL C06138 ST LAURENT QC',amt:78.23,dir:'out'},
- {date:'2026-05-31',desc:'Q PETRO-CANADA 30586 BRIGHTON ON',amt:69.80,dir:'out'},
- {date:'2026-03-15',desc:'COMMUNAUTO QC Montreal QC',amt:16.75,dir:'out'},
- {date:'2026-01-08',desc:'STM LUCIEN-L ALLIER MONTREAL QC',amt:3.75,dir:'out'},
-];
 
 setTab(); render();
 </script>
